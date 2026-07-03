@@ -111,6 +111,59 @@ test('buildSentence: 渲染参数同时包含参数型和描述型', () => {
   );
 });
 
+test('buildSentence: view 角色为元音开头词条时冠词应为 "An"（而非硬编码 "A"）', () => {
+  const selections = [
+    { role: 'view', en: 'Eye-level / 1.6m height', cn: '' }
+  ];
+  const result = PromptEngine.buildSentence(selections, 'en');
+  assert.equal(result, 'An eye-level / 1.6m height render of a hospital building.');
+});
+
+test('buildSentence: color 角色为元音开头词条时冠词应为 "an"（而非硬编码 "a"）', () => {
+  const selections = [
+    { role: 'subject', en: 'Emergency department', cn: '' },
+    { role: 'color', en: 'Earth tone / Terracotta / Beige', cn: '' }
+  ];
+  const result = PromptEngine.buildSentence(selections, 'en');
+  assert.equal(result, 'An emergency department, in an earth tone / terracotta / beige color palette.');
+});
+
+test('buildSentence: context 角色为元音开头词条时冠词应为 "an"（而非硬编码 "a"）', () => {
+  const selections = [
+    { role: 'subject', en: 'Emergency department', cn: '' },
+    { role: 'context', en: 'Arid / Desert / Dusty atmosphere', cn: '' }
+  ];
+  const result = PromptEngine.buildSentence(selections, 'en');
+  assert.equal(result, 'An emergency department, set within an arid / desert / dusty atmosphere.');
+});
+
+test('buildSentence: context 角色另一元音开头词条(Industrial...)冠词应为 "an"', () => {
+  const selections = [
+    { role: 'subject', en: 'Emergency department', cn: '' },
+    { role: 'context', en: 'Industrial park / Science campus', cn: '' }
+  ];
+  const result = PromptEngine.buildSentence(selections, 'en');
+  assert.equal(result, 'An emergency department, set within an industrial park / science campus.');
+});
+
+test('buildSentence: layout 角色为元音开头词条(合成用例)冠词应为 "an"（防御性修复，当前数据集无此场景）', () => {
+  const selections = [
+    { role: 'subject', en: 'Emergency department', cn: '' },
+    { role: 'layout', en: 'Elevated podium form', cn: '' }
+  ];
+  const result = PromptEngine.buildSentence(selections, 'en');
+  assert.equal(result, 'An emergency department, organized as an elevated podium form configuration.');
+});
+
+test('buildSentence: mood 角色为元音开头词条(合成用例)冠词应为 "an"（防御性修复，当前数据集无此场景）', () => {
+  const selections = [
+    { role: 'subject', en: 'Emergency department', cn: '' },
+    { role: 'mood', en: 'Airy and calm ambiance', cn: '' }
+  ];
+  const result = PromptEngine.buildSentence(selections, 'en');
+  assert.equal(result, 'An emergency department, evoking an airy and calm ambiance atmosphere.');
+});
+
 test('buildKeywordPhrase: 空选择返回空字符串', () => {
   assert.equal(PromptEngine.buildKeywordPhrase([], 'en'), '');
 });

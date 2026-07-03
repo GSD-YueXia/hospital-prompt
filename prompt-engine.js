@@ -114,19 +114,22 @@
         var parts = [];
         var viewArr = lcArr(groups.view);
         if (viewArr.length) {
-            parts.push('A ' + joinAnd(viewArr) + ' render of ' + subjectPhrase);
+            var viewPhrase = joinAnd(viewArr);
+            parts.push(capitalize(article(viewPhrase)) + ' ' + viewPhrase + ' render of ' + subjectPhrase);
         } else {
             parts.push(capitalize(subjectPhrase));
         }
 
         if (groups.layout && groups.layout.length) {
-            parts.push('organized as a ' + joinAnd(lcArr(groups.layout)) + ' configuration');
+            var layoutPhrase = joinAnd(lcArr(groups.layout));
+            parts.push('organized as ' + article(layoutPhrase) + ' ' + layoutPhrase + ' configuration');
         }
         if (groups.material && groups.material.length) {
             parts.push('clad in ' + joinAnd(lcArr(groups.material)));
         }
         if (groups.color && groups.color.length) {
-            parts.push('in a ' + joinAnd(lcArr(groups.color)) + ' color palette');
+            var colorPhrase = joinAnd(lcArr(groups.color));
+            parts.push('in ' + article(colorPhrase) + ' ' + colorPhrase + ' color palette');
         }
         if (groups.light && groups.light.length) {
             parts.push('illuminated by ' + joinAnd(lcArr(groups.light)));
@@ -135,10 +138,12 @@
             parts.push('with ' + joinAnd(lcArr(groups.interior)));
         }
         if (groups.context && groups.context.length) {
-            parts.push('set within a ' + joinAnd(lcArr(groups.context)));
+            var contextPhrase = joinAnd(lcArr(groups.context));
+            parts.push('set within ' + article(contextPhrase) + ' ' + contextPhrase);
         }
         if (groups.mood && groups.mood.length) {
-            parts.push('evoking a ' + joinAnd(lcArr(groups.mood)) + ' atmosphere');
+            var moodPhrase = joinAnd(lcArr(groups.mood));
+            parts.push('evoking ' + article(moodPhrase) + ' ' + moodPhrase + ' atmosphere');
         }
         if (groups.detail && groups.detail.length) {
             parts.push('with attention to ' + joinAnd(lcArr(groups.detail)));
