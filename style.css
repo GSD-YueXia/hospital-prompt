@@ -757,8 +757,10 @@ body {
         padding: 2px;
     }
     .format-btn {
-        font-size: 0;
         padding: 4px 8px;
+    }
+    .format-btn span {
+        display: none;
     }
     .format-btn[data-format="sentence"]::after {
         content: "语句";
@@ -770,8 +772,10 @@ body {
     }
 
     .btn-clear {
-        font-size: 0;
         padding: 4px 8px;
+    }
+    .btn-clear span {
+        display: none;
     }
     .btn-clear svg {
         width: 14px;
@@ -779,8 +783,10 @@ body {
     }
 
     .btn-image-analysis {
-        font-size: 0;
         padding: 4px 8px;
+    }
+    .btn-image-analysis span {
+        display: none;
     }
 
     /* 主布局：上下堆叠 */
