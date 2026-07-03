@@ -105,6 +105,26 @@ const PROMPT_DATA = [
         "label": "后勤保障",
         "en": "Central plant / Utility core",
         "cn": "动力中心/设备核心筒"
+      },
+      {
+        "label": "体检中心",
+        "en": "Health check-up / Physical examination center",
+        "cn": "体检中心"
+      },
+      {
+        "label": "静脉配置中心",
+        "en": "Pharmacy IV admixture center / PIVAS",
+        "cn": "静脉药物配置中心(PIVAS)"
+      },
+      {
+        "label": "作业治疗室",
+        "en": "Occupational therapy room",
+        "cn": "作业治疗室"
+      },
+      {
+        "label": "言语治疗室",
+        "en": "Speech therapy room",
+        "cn": "言语治疗室"
       }
     ]
   },
@@ -832,6 +852,18 @@ const PROMPT_DATA = [
         "en": "Minimal / Clean / Uncluttered",
         "cn": "简约/干净/无杂乱",
         "extra": "所有通用"
+      },
+      {
+        "label": "洁净通透",
+        "en": "Clean / Sterile / Airy",
+        "cn": "洁净/通透/无菌感",
+        "extra": "手术/ICU"
+      },
+      {
+        "label": "安全可控",
+        "en": "Secure / Controlled / Reassuring",
+        "cn": "安全/可控/安心",
+        "extra": "精神科/儿科"
       }
     ]
   },

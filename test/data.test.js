@@ -53,3 +53,10 @@ test('新增维度13/14/15存在且role正确，每个至少15条', () => {
     assert.equal(dim.items.length >= 15, true, 'dimension ' + id + ' should have at least 15 items');
   });
 });
+
+test('维度1(建筑主体)条目数不少于24，维度9(氛围情绪)条目数不少于12', () => {
+  const dim1 = PROMPT_DATA.find(function (d) { return d.id === 1; });
+  const dim9 = PROMPT_DATA.find(function (d) { return d.id === 9; });
+  assert.equal(dim1.items.length >= 24, true, 'dimension 1 should have at least 24 items, got ' + dim1.items.length);
+  assert.equal(dim9.items.length >= 12, true, 'dimension 9 should have at least 12 items, got ' + dim9.items.length);
+});
