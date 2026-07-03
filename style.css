@@ -757,13 +757,21 @@ body {
         padding: 2px;
     }
     .format-btn {
+        font-size: 0;
         padding: 4px 8px;
+    }
+    .format-btn[data-format="sentence"]::after {
+        content: "语句";
+        font-size: 11px;
+    }
+    .format-btn[data-format="keyword"]::after {
+        content: "关键";
         font-size: 11px;
     }
 
     .btn-clear {
-        padding: 4px 6px;
-        font-size: 11px;
+        font-size: 0;
+        padding: 4px 8px;
     }
     .btn-clear svg {
         width: 14px;
@@ -771,8 +779,8 @@ body {
     }
 
     .btn-image-analysis {
-        padding: 4px 6px;
-        font-size: 11px;
+        font-size: 0;
+        padding: 4px 8px;
     }
 
     /* 主布局：上下堆叠 */
