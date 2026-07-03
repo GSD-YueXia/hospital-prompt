@@ -1061,6 +1061,78 @@ const PROMPT_DATA = [
         "cn": "疗愈艺术/雕塑装置"
       }
     ]
+  },
+  {
+    "id": 13,
+    "title": "布局/体量形式",
+    "full_title": "维度13：布局/体量形式",
+    "col_layout": "standard",
+    "role": "layout",
+    "items": [
+      { "label": "方岛式布局", "en": "Podium-and-block massing / Isolated block plan", "cn": "方岛式布局/独立体量" },
+      { "label": "塔楼式高层", "en": "High-rise tower typology", "cn": "塔楼式高层" },
+      { "label": "分散院落式", "en": "Dispersed pavilion / Courtyard cluster plan", "cn": "分散院落式/组团布局" },
+      { "label": "指状布局", "en": "Finger plan / Linear wings radiating from spine", "cn": "指状布局/条形翼楼" },
+      { "label": "环形布局", "en": "Circular / Ring-shaped floor plan", "cn": "环形布局/环状平面" },
+      { "label": "裙房+塔楼组合", "en": "Podium-and-tower composition", "cn": "裙房+塔楼组合" },
+      { "label": "垂直分区", "en": "Vertical zoning / Low-rise outpatient base with high-rise inpatient tower", "cn": "垂直分区/低层门诊+高层住院" },
+      { "label": "线性布局", "en": "Linear / Bar building layout", "cn": "线性布局/条形楼布局" },
+      { "label": "集中式巨构", "en": "Centralized megastructure plan", "cn": "集中式巨构" },
+      { "label": "卫星式分院区", "en": "Satellite campus / Distributed branch layout", "cn": "卫星式分院区/分布式布局" },
+      { "label": "地下+地上复合", "en": "Below-grade and above-grade composite massing", "cn": "地下+地上复合体量" },
+      { "label": "模块化可扩展体量", "en": "Modular expandable massing / Phased growth block", "cn": "模块化可扩展体量/分期生长" },
+      { "label": "庭院环绕式", "en": "Courtyard-embraced massing / Buildings wrapping a central court", "cn": "庭院环绕式/围合中庭" },
+      { "label": "双翼对称布局", "en": "Symmetrical twin-wing layout", "cn": "双翼对称布局" },
+      { "label": "错层退台式", "en": "Staggered terrace / Stepped-back massing", "cn": "错层退台式/退台体量" }
+    ]
+  },
+  {
+    "id": 14,
+    "title": "医院专项设计细节",
+    "full_title": "维度14：医院专项设计细节",
+    "col_layout": "standard",
+    "role": "detail",
+    "items": [
+      { "label": "无障碍坡道与扶手", "en": "Accessible ramp with continuous handrails", "cn": "无障碍坡道+连续扶手" },
+      { "label": "无障碍卫生间标识", "en": "Accessible restroom signage / ADA-compliant washroom", "cn": "无障碍卫生间标识" },
+      { "label": "色彩编码导视系统", "en": "Color-coded wayfinding system", "cn": "色彩编码导视系统" },
+      { "label": "数字化导航屏", "en": "Digital wayfinding kiosk / Interactive directory screen", "cn": "数字化导航屏/互动索引屏" },
+      { "label": "洁污分区可视化标识", "en": "Clean-dirty zoning signage / Color-differentiated corridors", "cn": "洁污分区可视化标识/分色走廊" },
+      { "label": "独立候诊隔间", "en": "Private waiting cubicle / Semi-enclosed bay", "cn": "独立候诊隔间/半封闭候诊区" },
+      { "label": "负压病房警示标识", "en": "Negative-pressure isolation room warning sign", "cn": "负压病房警示标识" },
+      { "label": "医患分流缓冲间", "en": "Staff-patient separation buffer zone / Anteroom", "cn": "医患分流缓冲间/前室" },
+      { "label": "感控洗手流程动线", "en": "Infection-control hand hygiene circulation path", "cn": "感控洗手流程动线" },
+      { "label": "儿童友好尺度细节", "en": "Child-friendly scaled details / Playful low-height fixtures", "cn": "儿童友好尺度细节/低高度设施" },
+      { "label": "防跌倒地面警示", "en": "Anti-slip flooring with fall-prevention markings", "cn": "防跌倒地面警示/防滑地面" },
+      { "label": "隔音吸声处理", "en": "Acoustic sound insulation treatment", "cn": "隔音吸声处理" },
+      { "label": "防菌抗菌饰面标识", "en": "Antimicrobial surface finish signage", "cn": "防菌抗菌饰面标识" },
+      { "label": "应急呼叫按钮", "en": "Emergency call button / Nurse call station", "cn": "应急呼叫按钮/护士呼叫站" },
+      { "label": "无障碍电梯语音提示", "en": "Accessible elevator with voice announcement", "cn": "无障碍电梯语音提示" }
+    ]
+  },
+  {
+    "id": 15,
+    "title": "内部照明/饰面细节",
+    "full_title": "维度15：内部照明/饰面细节",
+    "col_layout": "standard",
+    "role": "interior",
+    "items": [
+      { "label": "间接照明灯槽", "en": "Indirect cove lighting channel", "cn": "间接照明灯槽" },
+      { "label": "线性光带", "en": "Linear LED light strip", "cn": "线性光带" },
+      { "label": "可调色温智能照明", "en": "Tunable color-temperature smart lighting", "cn": "可调色温智能照明" },
+      { "label": "天花穿孔吸声板", "en": "Perforated acoustic ceiling panel", "cn": "天花穿孔吸声板" },
+      { "label": "防菌地坪", "en": "Antimicrobial seamless flooring", "cn": "防菌地坪/无缝抗菌地面" },
+      { "label": "软性墙面装饰", "en": "Soft-touch wall covering / Cushioned wall panel", "cn": "软性墙面装饰/软包墙面" },
+      { "label": "发光导视墙", "en": "Illuminated wayfinding wall panel", "cn": "发光导视墙" },
+      { "label": "局部聚焦射灯", "en": "Focused accent spotlight", "cn": "局部聚焦射灯" },
+      { "label": "隐藏式一体化灯具", "en": "Concealed integrated luminaire", "cn": "隐藏式一体化灯具" },
+      { "label": "生物动力照明系统", "en": "Circadian biodynamic lighting system", "cn": "生物动力照明系统" },
+      { "label": "镂空吊顶造型", "en": "Perforated suspended ceiling feature", "cn": "镂空吊顶造型" },
+      { "label": "防眩光漫反射面板", "en": "Anti-glare diffused reflective panel", "cn": "防眩光漫反射面板" },
+      { "label": "暖色阅读灯角", "en": "Warm reading light nook", "cn": "暖色阅读灯角" },
+      { "label": "地脚夜灯带", "en": "Floor-level night light strip", "cn": "地脚夜灯带" },
+      { "label": "艺术灯具装置", "en": "Sculptural lighting installation", "cn": "艺术灯具装置" }
+    ]
   }
 ];
 
