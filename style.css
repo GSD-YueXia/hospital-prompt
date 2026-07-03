@@ -117,6 +117,38 @@ body {
     font-weight: 600;
 }
 
+/* Format Toggle (关键词模式 / 语句模式) */
+.format-toggle {
+    display: flex;
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+    border: 1px solid var(--border);
+}
+
+.format-btn {
+    border: none;
+    background: transparent;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-xs);
+    transition: var(--transition);
+    font-weight: 500;
+}
+
+.format-btn:hover {
+    color: var(--text-primary);
+}
+
+.format-btn.active {
+    background: var(--bg-card);
+    color: var(--accent);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    font-weight: 600;
+}
+
 /* Clear Button */
 .btn-clear {
     display: flex;
@@ -698,6 +730,11 @@ body {
     }
 
     .lang-btn {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+
+    .format-btn {
         padding: 5px 10px;
         font-size: 12px;
     }

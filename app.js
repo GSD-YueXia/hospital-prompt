@@ -10,6 +10,7 @@
     const state = {
         selected: new Map(), // key: "dimId-itemIdx" => item object
         lang: 'en',          // 'en' | 'cn' | 'both'
+        format: 'sentence',  // 'sentence' | 'keyword'
         data: PROMPT_DATA    // from data.js
     };
 
@@ -250,6 +251,19 @@
         return dim ? dim.items.length : 0;
     }
 
+    // ===== Build flat selections list for PromptEngine =====
+    function buildSelectionsList() {
+        var list = [];
+        state.data.forEach(function(dim) {
+            state.selected.forEach(function(val) {
+                if (val.dimId !== dim.id) return;
+                if (dim.id === 10 && val.item.label === 'SD负面固定包') return;
+                list.push({ role: dim.role, en: val.item.en, cn: val.item.cn });
+            });
+        });
+        return list;
+    }
+
     // ===== Generate Prompt =====
     function updatePrompt() {
         const count = state.selected.size;
@@ -293,37 +307,13 @@
             });
         }
 
-        // Build the prompt based on language
-        let parts = [];
+        // Build the prompt using PromptEngine (sentence or keyword mode)
+        const selections = buildSelectionsList();
+        let promptStr = state.format === 'keyword'
+            ? PromptEngine.buildKeywordPhrase(selections, state.lang)
+            : PromptEngine.buildSentence(selections, state.lang);
 
-        state.data.forEach(function(dim) {
-            if (!dimGroups[dim.id]) return;
-
-            dimGroups[dim.id].forEach(function(item) {
-                if (dim.id === 10) {
-                    // Render params: use the suffix directly
-                    // Skip negative prompt in main prompt
-                    if (item.label === 'SD负面固定包') return;
-                    parts.push(item.en);
-                } else {
-                    // Normal items
-                    if (state.lang === 'cn' && item.cn) {
-                        parts.push(item.cn);
-                    } else if (state.lang === 'both') {
-                        // For both, use English as primary (AI works better with English)
-                        parts.push(item.en);
-                    } else {
-                        // Default: English
-                        parts.push(item.en);
-                    }
-                }
-            });
-        });
-
-        // Join with comma
-        let promptStr = parts.join(', ');
-
-        // For 'both' mode, append Chinese translations
+        // For 'both' mode, append Chinese translations as reference
         if (state.lang === 'both') {
             let cnParts = [];
             state.data.forEach(function(dim) {
@@ -488,6 +478,18 @@
                 this.classList.add('active');
                 state.lang = this.dataset.lang;
                 reRenderTags();
+                updatePrompt();
+            });
+        });
+
+        // Format toggle
+        document.querySelectorAll('.format-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.format-btn').forEach(function(b) {
+                    b.classList.remove('active');
+                });
+                this.classList.add('active');
+                state.format = this.dataset.format;
                 updatePrompt();
             });
         });
