@@ -55,12 +55,12 @@
 
 ## 句子生成引擎（语句模式）
 
-新增函数 `buildSentence(dimGroups)`，位于 `app.js`。
+新增函数 `buildSentence(selections, lang)`，位于 `prompt-engine.js`（纯函数模块，供 `app.js` 调用）。
 
 算法：
 1. 按角色分组已选条目（一个角色可能对应多个选中项，用 " and " 连接同角色内的多个词组）。
 2. 按固定顺序（view → style+subject(+space) → layout → material → color → light → interior → context → mood → detail → furniture → landscape）依次拼接对应模板片段，跳过未选中的角色。
-3. 若一个角色都没选，句子核心退化为 "An architectural render of a hospital"（避免空句子）。
+3. 若一个角色都没选，句子核心退化为 "a hospital building"，经首字母大写后输出 "A hospital building."（避免空句子）。
 4. 首字母大写，句尾补句号。
 5. 渲染参数（`render_param`角色，维度10）单独处理，见下节，不参与主句拼接，而是作为句子后缀追加。
 
