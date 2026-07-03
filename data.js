@@ -4,6 +4,7 @@ const PROMPT_DATA = [
     "title": "建筑主体类型 / 医疗功能模块",
     "full_title": "维度1：建筑主体类型 / 医疗功能模块",
     "col_layout": "standard",
+    "role": "subject",
     "items": [
       {
         "label": "综合门诊",
@@ -112,6 +113,7 @@ const PROMPT_DATA = [
     "title": "空间类型（室内/室外）",
     "full_title": "维度2：空间类型（室内/室外）",
     "col_layout": "standard",
+    "role": "space",
     "items": [
       {
         "label": "入口大厅",
@@ -220,6 +222,7 @@ const PROMPT_DATA = [
     "title": "建筑风格 / 设计语言",
     "full_title": "维度3：建筑风格 / 设计语言",
     "col_layout": "standard",
+    "role": "style",
     "items": [
       {
         "label": "现代极简",
@@ -303,6 +306,7 @@ const PROMPT_DATA = [
     "title": "外立面/表皮材质",
     "full_title": "维度4：外立面/表皮材质",
     "col_layout": "standard",
+    "role": "material",
     "items": [
       {
         "label": "玻璃幕墙",
@@ -401,6 +405,7 @@ const PROMPT_DATA = [
     "title": "色彩方案",
     "full_title": "维度5：色彩方案",
     "col_layout": "standard",
+    "role": "color",
     "items": [
       {
         "label": "全白/冷白",
@@ -469,6 +474,7 @@ const PROMPT_DATA = [
     "title": "光线/时间",
     "full_title": "维度6：光线/时间",
     "col_layout": "standard",
+    "role": "light",
     "items": [
       {
         "label": "清晨日光",
@@ -567,6 +573,7 @@ const PROMPT_DATA = [
     "title": "视角/镜头",
     "full_title": "维度7：视角/镜头",
     "col_layout": "view_angle",
+    "role": "view",
     "items": [
       {
         "label": "人眼平视",
@@ -680,6 +687,7 @@ const PROMPT_DATA = [
     "title": "环境/周边",
     "full_title": "维度8：环境/周边",
     "col_layout": "standard",
+    "role": "context",
     "items": [
       {
         "label": "城市密集区",
@@ -763,6 +771,7 @@ const PROMPT_DATA = [
     "title": "氛围/情绪",
     "full_title": "维度9：氛围/情绪",
     "col_layout": "standard",
+    "role": "mood",
     "items": [
       {
         "label": "温馨安心",
@@ -831,6 +840,7 @@ const PROMPT_DATA = [
     "title": "常用后缀/渲染参数",
     "full_title": "维度10：常用后缀/渲染参数",
     "col_layout": "render_param",
+    "role": "render_param",
     "items": [
       {
         "label": "MJ标准写实",
@@ -929,6 +939,7 @@ const PROMPT_DATA = [
     "title": "医疗家具/设备",
     "full_title": "维度11：医疗家具/设备",
     "col_layout": "standard",
+    "role": "furniture",
     "items": [
       {
         "label": "病床",
@@ -997,6 +1008,7 @@ const PROMPT_DATA = [
     "title": "自然元素/景观",
     "full_title": "维度12：自然元素/景观",
     "col_layout": "standard",
+    "role": "landscape",
     "items": [
       {
         "label": "疗愈花园",
@@ -1051,3 +1063,7 @@ const PROMPT_DATA = [
     ]
   }
 ];
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = PROMPT_DATA;
+}
