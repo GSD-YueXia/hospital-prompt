@@ -180,12 +180,6 @@
         return parts.join(', ');
     }
 
-    return {
-        buildSentence: buildSentence,
-        buildKeywordPhrase: buildKeywordPhrase,
-        isRenderFlag: isRenderFlag
-    };
-
     // ===== Analysis Diagram Prompt Building =====
 
     function buildAnalysisSentence(selections, lang) {
