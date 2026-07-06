@@ -906,75 +906,105 @@
     function handleImageFile(file) {
         if (!file) return;
 
-        if (file.size > 10 * 1024 * 1024) {
-            showToast('图片不能超过 10MB');
+        if (file.size > 20 * 1024 * 1024) {
+            showToast('图片不能超过 20MB');
             return;
         }
 
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            var img = new Image();
-            img.onload = function() {
+        showToast('正在处理图片...');
+
+        // 使用 createImageBitmap 直接解码（省去 base64 中间步骤，大幅降低内存峰值）
+        if (typeof createImageBitmap === 'function') {
+            createImageBitmap(file).then(function(bitmap) {
                 try {
-                    var canvas = document.createElement('canvas');
-                    var ctx = canvas.getContext('2d');
-                    if (!ctx) {
-                        showToast('浏览器不支持 Canvas');
-                        return;
-                    }
-                    var maxDim = 2000;
-                    var w = img.width, h = img.height;
-
-                    if (w > maxDim || h > maxDim) {
-                        if (w > h) {
-                            h = Math.round(h * maxDim / w);
-                            w = maxDim;
-                        } else {
-                            w = Math.round(w * maxDim / h);
-                            h = maxDim;
-                        }
-                    }
-
-                    canvas.width = w;
-                    canvas.height = h;
-                    ctx.drawImage(img, 0, 0, w, h);
-
-                    var mimeType = file.type || 'image/jpeg';
-                    if (mimeType === 'image/png') {
-                        imageAnalysis.currentImageBase64 = canvas.toDataURL('image/png', 0.9);
-                    } else {
-                        imageAnalysis.currentImageBase64 = canvas.toDataURL('image/jpeg', 0.85);
-                    }
-
-                    // Show preview
-                    var previewImg = document.getElementById('previewImg');
-                    var uploadZone = document.getElementById('uploadZone');
-                    var imagePreview = document.getElementById('imagePreview');
-                    if (previewImg) previewImg.src = imageAnalysis.currentImageBase64;
-                    if (uploadZone) uploadZone.style.display = 'none';
-                    if (imagePreview) imagePreview.style.display = 'block';
-
-                    checkAnalyzeReady();
-                } catch (ex) {
-                    showToast('图片处理失败: ' + (ex.message || '未知错误'));
-                    console.error('handleImageFile error:', ex);
+                    processImageSource(bitmap, file);
+                } finally {
+                    if (bitmap.close) bitmap.close();
                 }
+            }).catch(function() {
+                // 降级到 FileReader 方式
+                processWithFileReader(file);
+            });
+        } else {
+            processWithFileReader(file);
+        }
+
+        // 通用图片处理：将任意图片源（ImageBitmap / Image）绘制到 Canvas 并压缩
+        function processImageSource(source, file) {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            if (!ctx) {
+                showToast('浏览器不支持 Canvas');
+                return;
+            }
+            var maxDim = 2000;
+            var w = source.width, h = source.height;
+
+            if (w > maxDim || h > maxDim) {
+                if (w > h) {
+                    h = Math.round(h * maxDim / w);
+                    w = maxDim;
+                } else {
+                    w = Math.round(w * maxDim / h);
+                    h = maxDim;
+                }
+            }
+
+            canvas.width = w;
+            canvas.height = h;
+            ctx.drawImage(source, 0, 0, w, h);
+
+            var mimeType = file.type || 'image/jpeg';
+            var dataUrl;
+            if (mimeType === 'image/png') {
+                dataUrl = canvas.toDataURL('image/png', 0.9);
+            } else {
+                dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            }
+
+            // 如果压缩后仍超过 4MB，二次压缩为低质量 JPEG
+            if (dataUrl.length > 4 * 1024 * 1024) {
+                dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+            }
+
+            imageAnalysis.currentImageBase64 = dataUrl;
+
+            // Show preview
+            var previewImg = document.getElementById('previewImg');
+            var uploadZone = document.getElementById('uploadZone');
+            var imagePreview = document.getElementById('imagePreview');
+            if (previewImg) previewImg.src = dataUrl;
+            if (uploadZone) uploadZone.style.display = 'none';
+            if (imagePreview) imagePreview.style.display = 'block';
+
+            checkAnalyzeReady();
+        }
+
+        // 降级方案：FileReader → Image → Canvas
+        function processWithFileReader(file) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                var img = new Image();
+                img.onload = function() {
+                    try {
+                        processImageSource(img, file);
+                    } catch (ex) {
+                        showToast('图片处理失败: ' + (ex.message || '未知错误'));
+                        console.error('handleImageFile error:', ex);
+                    }
+                };
+                img.onerror = function() {
+                    showToast('图片加载失败，请尝试其他图片或格式');
+                    console.error('Image failed to load from data URL');
+                };
+                img.src = e.target.result;
             };
-
-            img.onerror = function() {
-                showToast('图片加载失败，请尝试其他图片或格式');
-                console.error('Image failed to load from data URL');
+            reader.onerror = function() {
+                showToast('文件读取失败，请重试');
+                console.error('FileReader failed to read file');
             };
-
-            img.src = e.target.result;
-        };
-
-        reader.onerror = function() {
-            showToast('文件读取失败，请重试');
-            console.error('FileReader failed to read file');
-        };
-
-        reader.readAsDataURL(file);
+            reader.readAsDataURL(file);
+        }
     }
 
     function resetResults() {
