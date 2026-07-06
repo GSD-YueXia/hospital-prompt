@@ -962,9 +962,10 @@ body {
 
     /* 分析图模块缩小 */
     .module-header { padding: 12px 14px; }
-    .module-title { font-size: 14px; }
+    .module-badge { width: 22px; height: 22px; font-size: 10px; }
+    .module-title { font-size: 13px; }
     .module-desc { font-size: 11px; }
-    .module-body { padding: 0 10px 14px; }
+    .module-body { padding: 10px 12px 14px; }
     .category-header { padding: 8px 12px; }
     .category-title { font-size: 12px; }
     .category-body { padding: 8px 10px 12px; }
@@ -1895,10 +1896,10 @@ body {
 
     /* 分析图模块层级缩小 */
     .module-header { padding: 10px 12px; }
-    .module-badge { min-width: 34px; height: 22px; padding: 0 8px; font-size: 10px; }
-    .module-title { font-size: 13px; }
+    .module-badge { width: 20px; height: 20px; font-size: 10px; }
+    .module-title { font-size: 12px; }
     .module-desc { display: none; }
-    .module-body { padding: 0 6px 10px; }
+    .module-body { padding: 6px 8px 10px; }
     .category-header { padding: 8px 10px; }
     .category-title { font-size: 11px; }
     .category-body { padding: 6px 8px 10px; }
@@ -2023,7 +2024,7 @@ body {
 
 /* 模块容器 */
 .module-section {
-    margin-bottom: 28px;
+    margin-bottom: 24px;
     background: var(--bg-card);
     border-radius: var(--radius);
     border: 1px solid var(--border);
@@ -2045,11 +2046,11 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
+    padding: 14px 18px;
     cursor: pointer;
     user-select: none;
-    background: var(--bg);
-    border-bottom: 2px solid var(--border);
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-light);
     transition: var(--transition);
     gap: 12px;
 }
@@ -2070,21 +2071,19 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 44px;
-    height: 28px;
-    padding: 0 10px;
-    background: var(--accent);
-    color: white;
-    border-radius: 14px;
+    width: 26px;
+    height: 26px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    border-radius: 50%;
     font-size: 12px;
     font-weight: 700;
     flex-shrink: 0;
-    letter-spacing: 0.5px;
 }
 
 .module-title {
-    font-size: 16px;
-    font-weight: 700;
+    font-size: 15px;
+    font-weight: 600;
     color: var(--text-primary);
     white-space: nowrap;
 }
@@ -2108,10 +2107,9 @@ body {
 .module-count {
     font-size: 12px;
     color: var(--text-muted);
-    background: var(--bg-card);
+    background: var(--bg);
     padding: 2px 10px;
     border-radius: 12px;
-    border: 1px solid var(--border);
 }
 
 .module-count.has-selection {
@@ -2122,7 +2120,7 @@ body {
 
 /* 模块主体 */
 .module-body {
-    padding: 0 16px 16px;
+    padding: 14px 18px 18px;
 }
 
 /* 类别容器 */
@@ -2204,44 +2202,53 @@ body {
     padding: 10px 14px 14px;
 }
 
-/* M00-M07 模块色码 */
-.dim-cat-m00 { border-left: 4px solid #06b6d4; }
-.dim-cat-m01 { border-left: 4px solid #3b82f6; }
-.dim-cat-m02 { border-left: 4px solid #6366f1; }
-.dim-cat-m03 { border-left: 4px solid #f43f5e; }
-.dim-cat-m04 { border-left: 4px solid #a855f7; }
-.dim-cat-m05 { border-left: 4px solid #f97316; }
-.dim-cat-m06 { border-left: 4px solid #10b981; }
-.dim-cat-m07 { border-left: 4px solid #6b7280; }
+/* M00-M07 模块色码 — 左边框放在头部 + CSS 变量 */
+.dim-cat-m00 { --cat-color: #0d9488; --cat-bg: #f0fdfa; }
+.dim-cat-m01 { --cat-color: #2563eb; --cat-bg: #eff6ff; }
+.dim-cat-m02 { --cat-color: #4f46e5; --cat-bg: #eef2ff; }
+.dim-cat-m03 { --cat-color: #e11d48; --cat-bg: #fff1f2; }
+.dim-cat-m04 { --cat-color: #9333ea; --cat-bg: #faf5ff; }
+.dim-cat-m05 { --cat-color: #ea580c; --cat-bg: #fff7ed; }
+.dim-cat-m06 { --cat-color: #10b981; --cat-bg: #ecfdf5; }
+.dim-cat-m07 { --cat-color: #475569; --cat-bg: #f8fafc; }
 
-/* 模块 badge 色码 */
-.dim-cat-m00 .module-badge { background: #06b6d4; }
-.dim-cat-m01 .module-badge { background: #3b82f6; }
-.dim-cat-m02 .module-badge { background: #6366f1; }
-.dim-cat-m03 .module-badge { background: #f43f5e; }
-.dim-cat-m04 .module-badge { background: #a855f7; }
-.dim-cat-m05 .module-badge { background: #f97316; }
-.dim-cat-m06 .module-badge { background: #10b981; }
-.dim-cat-m07 .module-badge { background: #6b7280; }
+.dim-cat-m00 .module-header,
+.dim-cat-m01 .module-header,
+.dim-cat-m02 .module-header,
+.dim-cat-m03 .module-header,
+.dim-cat-m04 .module-header,
+.dim-cat-m05 .module-header,
+.dim-cat-m06 .module-header,
+.dim-cat-m07 .module-header { border-left: 4px solid var(--cat-color); }
+
+/* 模块 badge 色码 — 浅底+彩色字（与 .dimension-number 对齐） */
+.dim-cat-m00 .module-badge { background: #f0fdfa; color: #0d9488; }
+.dim-cat-m01 .module-badge { background: #eff6ff; color: #2563eb; }
+.dim-cat-m02 .module-badge { background: #eef2ff; color: #4f46e5; }
+.dim-cat-m03 .module-badge { background: #fff1f2; color: #e11d48; }
+.dim-cat-m04 .module-badge { background: #faf5ff; color: #9333ea; }
+.dim-cat-m05 .module-badge { background: #fff7ed; color: #ea580c; }
+.dim-cat-m06 .module-badge { background: #ecfdf5; color: #10b981; }
+.dim-cat-m07 .module-badge { background: #f8fafc; color: #475569; }
 
 /* 导航圆点 分析图模式色码 */
-.dot-cat-m00 { border-color: #06b6d4; color: #06b6d4; }
-.dot-cat-m01 { border-color: #3b82f6; color: #3b82f6; }
-.dot-cat-m02 { border-color: #6366f1; color: #6366f1; }
-.dot-cat-m03 { border-color: #f43f5e; color: #f43f5e; }
-.dot-cat-m04 { border-color: #a855f7; color: #a855f7; }
-.dot-cat-m05 { border-color: #f97316; color: #f97316; }
+.dot-cat-m00 { border-color: #0d9488; color: #0d9488; }
+.dot-cat-m01 { border-color: #2563eb; color: #2563eb; }
+.dot-cat-m02 { border-color: #4f46e5; color: #4f46e5; }
+.dot-cat-m03 { border-color: #e11d48; color: #e11d48; }
+.dot-cat-m04 { border-color: #9333ea; color: #9333ea; }
+.dot-cat-m05 { border-color: #ea580c; color: #ea580c; }
 .dot-cat-m06 { border-color: #10b981; color: #10b981; }
-.dot-cat-m07 { border-color: #6b7280; color: #6b7280; }
+.dot-cat-m07 { border-color: #475569; color: #475569; }
 
-.nav-dot.dot-cat-m00.active { background: #06b6d4; border-color: #06b6d4; color: white; }
-.nav-dot.dot-cat-m01.active { background: #3b82f6; border-color: #3b82f6; color: white; }
-.nav-dot.dot-cat-m02.active { background: #6366f1; border-color: #6366f1; color: white; }
-.nav-dot.dot-cat-m03.active { background: #f43f5e; border-color: #f43f5e; color: white; }
-.nav-dot.dot-cat-m04.active { background: #a855f7; border-color: #a855f7; color: white; }
-.nav-dot.dot-cat-m05.active { background: #f97316; border-color: #f97316; color: white; }
+.nav-dot.dot-cat-m00.active { background: #0d9488; border-color: #0d9488; color: white; }
+.nav-dot.dot-cat-m01.active { background: #2563eb; border-color: #2563eb; color: white; }
+.nav-dot.dot-cat-m02.active { background: #4f46e5; border-color: #4f46e5; color: white; }
+.nav-dot.dot-cat-m03.active { background: #e11d48; border-color: #e11d48; color: white; }
+.nav-dot.dot-cat-m04.active { background: #9333ea; border-color: #9333ea; color: white; }
+.nav-dot.dot-cat-m05.active { background: #ea580c; border-color: #ea580c; color: white; }
 .nav-dot.dot-cat-m06.active { background: #10b981; border-color: #10b981; color: white; }
-.nav-dot.dot-cat-m07.active { background: #6b7280; border-color: #6b7280; color: white; }
+.nav-dot.dot-cat-m07.active { background: #475569; border-color: #475569; color: white; }
 
 .selected-tag:hover .selected-tag-remove {
     color: rgba(255,255,255,0.8);
@@ -2295,12 +2302,12 @@ body {
 .dim-cat-interior { --cat-color: #dc2626; --cat-bg: #fef2f2; --cat-border: #fecaca; }
 
 /* Apply category colors to dimension sections */
-.dim-cat-structure .dimension-header    { border-left: 3px solid var(--cat-color); }
-.dim-cat-style .dimension-header        { border-left: 3px solid var(--cat-color); }
-.dim-cat-material .dimension-header     { border-left: 3px solid var(--cat-color); }
-.dim-cat-environment .dimension-header  { border-left: 3px solid var(--cat-color); }
-.dim-cat-tech .dimension-header         { border-left: 3px solid var(--cat-color); }
-.dim-cat-interior .dimension-header     { border-left: 3px solid var(--cat-color); }
+.dim-cat-structure .dimension-header    { border-left: 4px solid var(--cat-color); }
+.dim-cat-style .dimension-header        { border-left: 4px solid var(--cat-color); }
+.dim-cat-material .dimension-header     { border-left: 4px solid var(--cat-color); }
+.dim-cat-environment .dimension-header  { border-left: 4px solid var(--cat-color); }
+.dim-cat-tech .dimension-header         { border-left: 4px solid var(--cat-color); }
+.dim-cat-interior .dimension-header     { border-left: 4px solid var(--cat-color); }
 
 .dim-cat-structure .dimension-number    { background: var(--cat-bg); color: var(--cat-color); }
 .dim-cat-style .dimension-number        { background: var(--cat-bg); color: var(--cat-color); }
@@ -2315,31 +2322,6 @@ body {
 .dim-cat-environment .dimension-title   { color: var(--cat-color); }
 .dim-cat-tech .dimension-title          { color: var(--cat-color); }
 .dim-cat-interior .dimension-title      { color: var(--cat-color); }
-
-/* ===== 分析图模式 (M00-M07) 模块色码 ===== */
-.dim-cat-m00 { --cat-color: #0d9488; --cat-bg: #f0fdfa; --cat-border: #99f6e4; }  /* 参考源 - Teal */
-.dim-cat-m01 { --cat-color: #2563eb; --cat-bg: #eff6ff; --cat-border: #bfdbfe; }  /* 输入控制 - Blue */
-.dim-cat-m02 { --cat-color: #4f46e5; --cat-bg: #eef2ff; --cat-border: #c7d2fe; }  /* 设计意图 - Indigo */
-.dim-cat-m03 { --cat-color: #e11d48; --cat-bg: #fff1f2; --cat-border: #fecdd3; }  /* 建筑逻辑 - Rose */
-.dim-cat-m04 { --cat-color: #9333ea; --cat-bg: #faf5ff; --cat-border: #e9d5ff; }  /* 视觉语法 - Violet */
-.dim-cat-m05 { --cat-color: #ea580c; --cat-bg: #fff7ed; --cat-border: #fed7aa; }  /* 建筑表现 - Orange */
-.dim-cat-m06 { --cat-color: #10b981; --cat-bg: #ecfdf5; --cat-border: #a7f3d0; }  /* 视觉风格 - Emerald */
-.dim-cat-m07 { --cat-color: #475569; --cat-bg: #f8fafc; --cat-border: #cbd5e1; }  /* 输出质量 - Slate */
-
-.dim-cat-m00 .dimension-header, .dim-cat-m01 .dimension-header,
-.dim-cat-m02 .dimension-header, .dim-cat-m03 .dimension-header,
-.dim-cat-m04 .dimension-header, .dim-cat-m05 .dimension-header,
-.dim-cat-m06 .dimension-header, .dim-cat-m07 .dimension-header { border-left: 3px solid var(--cat-color); }
-
-.dim-cat-m00 .dimension-number, .dim-cat-m01 .dimension-number,
-.dim-cat-m02 .dimension-number, .dim-cat-m03 .dimension-number,
-.dim-cat-m04 .dimension-number, .dim-cat-m05 .dimension-number,
-.dim-cat-m06 .dimension-number, .dim-cat-m07 .dimension-number { background: var(--cat-bg); color: var(--cat-color); }
-
-.dim-cat-m00 .dimension-title, .dim-cat-m01 .dimension-title,
-.dim-cat-m02 .dimension-title, .dim-cat-m03 .dimension-title,
-.dim-cat-m04 .dimension-title, .dim-cat-m05 .dimension-title,
-.dim-cat-m06 .dimension-title, .dim-cat-m07 .dimension-title { color: var(--cat-color); }
 
 /* Nav dots also get category colors */
 .nav-dot.dot-cat-structure.active, .nav-dot.dot-cat-structure.has-selection { background: #2563eb; border-color: #2563eb; }
