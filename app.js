@@ -2,7 +2,7 @@
  * 医院建筑 AI 提示词生成器
  * 核心逻辑：点击维度标签 → 自动组合生成完整 AI 提示词
  * 效果图模式：扁平结构 data.js
- * 分析图模式：三级嵌套结构 analysis-data.js（模块M00-M07 → 类别 → 词条）
+ * 分析图模式：三级嵌套结构 analysis-data.js（模块1-8 → 类别 → 词条）
  */
 
 (function() {
@@ -673,28 +673,28 @@
 
     function getModuleDotClass(moduleId) {
         var classMap = {
-            'M00': 'dot-cat-m00',
-            'M01': 'dot-cat-m01',
-            'M02': 'dot-cat-m02',
-            'M03': 'dot-cat-m03',
-            'M04': 'dot-cat-m04',
-            'M05': 'dot-cat-m05',
-            'M06': 'dot-cat-m06',
-            'M07': 'dot-cat-m07'
+            '1': 'dot-cat-m00',
+            '2': 'dot-cat-m01',
+            '3': 'dot-cat-m02',
+            '4': 'dot-cat-m03',
+            '5': 'dot-cat-m04',
+            '6': 'dot-cat-m05',
+            '7': 'dot-cat-m06',
+            '8': 'dot-cat-m07'
         };
         return classMap[moduleId] || '';
     }
 
     function getModuleSectionClass(moduleId) {
         var classMap = {
-            'M00': 'dim-cat-m00',
-            'M01': 'dim-cat-m01',
-            'M02': 'dim-cat-m02',
-            'M03': 'dim-cat-m03',
-            'M04': 'dim-cat-m04',
-            'M05': 'dim-cat-m05',
-            'M06': 'dim-cat-m06',
-            'M07': 'dim-cat-m07'
+            '1': 'dim-cat-m00',
+            '2': 'dim-cat-m01',
+            '3': 'dim-cat-m02',
+            '4': 'dim-cat-m03',
+            '5': 'dim-cat-m04',
+            '6': 'dim-cat-m05',
+            '7': 'dim-cat-m06',
+            '8': 'dim-cat-m07'
         };
         return classMap[moduleId] || '';
     }
@@ -926,6 +926,7 @@
         state.selected.clear();
         scrollTrackingBound = false;
         renderDimensions();
+        updateSelectedTags();
         updatePrompt();
         bindSearchEvents();
         showToast(newMode === 'analysis' ? '已切换到分析图模式' : '已切换到效果图模式');
