@@ -11,7 +11,8 @@
         selected: new Map(), // key: "dimId-itemIdx" => item object
         lang: 'en',          // 'en' | 'cn' | 'both'
         format: 'sentence',  // 'sentence' | 'keyword'
-        data: PROMPT_DATA    // from data.js
+        mode: 'rendering',   // 'rendering' | 'analysis'
+        data: PROMPT_DATA    // from data.js (rendering) or ANALYSIS_PROMPT_DATA (analysis)
     };
 
     // ===== DOM Refs =====
@@ -351,6 +352,19 @@
 
     // ===== Category Color Mapping =====
     function getDimCategoryClass(dimId) {
+        if (state.mode === 'analysis') {
+            // Analysis mode: map to M00-M07
+            if (dimId === 1) return 'dot-cat-m00 dim-cat-m00';
+            if (dimId >= 2 && dimId <= 9) return 'dot-cat-m01 dim-cat-m01';
+            if (dimId >= 10 && dimId <= 15) return 'dot-cat-m02 dim-cat-m02';
+            if (dimId >= 16 && dimId <= 22) return 'dot-cat-m03 dim-cat-m03';
+            if (dimId >= 23 && dimId <= 26) return 'dot-cat-m04 dim-cat-m04';
+            if (dimId >= 27 && dimId <= 31) return 'dot-cat-m05 dim-cat-m05';
+            if (dimId >= 32 && dimId <= 38) return 'dot-cat-m06 dim-cat-m06';
+            if (dimId >= 39 && dimId <= 43) return 'dot-cat-m07 dim-cat-m07';
+            return '';
+        }
+        // Rendering mode
         // D1建筑类型, D2空间类型 → 建筑本体 Blue
         if (dimId === 1 || dimId === 2) return 'dot-cat-structure dim-cat-structure';
         // D3风格, D5色彩, D6光线, D7视角, D13布局/体量 → 设计表现 Purple
@@ -368,7 +382,10 @@
 
     // ===== Scroll Tracking =====
     var scrollTrackingTimer = null;
+    var scrollTrackingBound = false;
     function bindScrollTracking() {
+        if (scrollTrackingBound) return; // Avoid duplicate listeners on mode switch
+        scrollTrackingBound = true;
         dimensionsPanel.addEventListener('scroll', function() {
             if (scrollTrackingTimer) clearTimeout(scrollTrackingTimer);
             scrollTrackingTimer = setTimeout(updateNavDotActive, 80);
@@ -479,11 +496,18 @@
             });
         }
 
-        // Build the prompt using PromptEngine (sentence or keyword mode)
+        // Build the prompt using PromptEngine (mode-aware)
         const selections = buildSelectionsList();
-        let promptStr = state.format === 'keyword'
-            ? PromptEngine.buildKeywordPhrase(selections, state.lang)
-            : PromptEngine.buildSentence(selections, state.lang);
+        let promptStr;
+        if (state.mode === 'analysis') {
+            promptStr = state.format === 'keyword'
+                ? PromptEngine.buildAnalysisKeyword(selections, state.lang)
+                : PromptEngine.buildAnalysisSentence(selections, state.lang);
+        } else {
+            promptStr = state.format === 'keyword'
+                ? PromptEngine.buildKeywordPhrase(selections, state.lang)
+                : PromptEngine.buildSentence(selections, state.lang);
+        }
 
         // For 'both' mode, append Chinese translations as reference
         if (state.lang === 'both') {
@@ -611,6 +635,17 @@
         }, 2000);
     }
 
+    // ===== Mode Switch =====
+    function switchMode(newMode) {
+        state.mode = newMode;
+        state.data = (newMode === 'analysis') ? ANALYSIS_PROMPT_DATA : PROMPT_DATA;
+        state.selected.clear();
+        renderDimensions();
+        updatePrompt();
+        bindDimensionEvents();
+        showToast(newMode === 'analysis' ? '已切换到分析图模式' : '已切换到效果图模式');
+    }
+
     // ===== Clear All =====
     function clearAll() {
         state.selected.clear();
@@ -687,6 +722,19 @@
                 this.classList.add('active');
                 state.format = this.dataset.format;
                 updatePrompt();
+            });
+        });
+
+        // Mode switch (效果图 / 分析图)
+        document.querySelectorAll('.mode-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var newMode = this.dataset.mode;
+                if (state.mode === newMode) return;
+                document.querySelectorAll('.mode-btn').forEach(function(b) {
+                    b.classList.remove('active');
+                });
+                this.classList.add('active');
+                switchMode(newMode);
             });
         });
 

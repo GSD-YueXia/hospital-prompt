@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>医院建筑 AI 提示词生成器</title>
-    <link rel="stylesheet" href="style.css?v=20260703">
+    <link rel="stylesheet" href="style.css?v=20260706">
 </head>
 <body>
     <!-- Header -->
@@ -17,6 +17,10 @@
                 <span class="logo-text">医院建筑 AI 提示词生成器</span>
             </div>
             <div class="header-controls">
+                <div class="mode-switch" id="modeSwitch">
+                    <button class="mode-btn active" data-mode="rendering"><span>效果图</span></button>
+                    <button class="mode-btn" data-mode="analysis"><span>分析图</span></button>
+                </div>
                 <div class="lang-toggle">
                     <button class="lang-btn active" data-lang="en">English</button>
                     <button class="lang-btn" data-lang="cn">中文</button>
@@ -254,6 +258,7 @@
     </div>
 
     <script src="data.js"></script>
+    <script src="analysis-data.js"></script>
     <script src="prompt-engine.js"></script>
     <script src="app.js"></script>
 </body>
