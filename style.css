@@ -2232,23 +2232,14 @@ body {
 .dim-cat-m07 .module-badge { background: #f8fafc; color: #475569; }
 
 /* 导航圆点 分析图模式色码 */
-.dot-cat-m00 { border-color: #0d9488; color: #0d9488; }
-.dot-cat-m01 { border-color: #2563eb; color: #2563eb; }
-.dot-cat-m02 { border-color: #4f46e5; color: #4f46e5; }
-.dot-cat-m03 { border-color: #e11d48; color: #e11d48; }
-.dot-cat-m04 { border-color: #9333ea; color: #9333ea; }
-.dot-cat-m05 { border-color: #ea580c; color: #ea580c; }
-.dot-cat-m06 { border-color: #10b981; color: #10b981; }
-.dot-cat-m07 { border-color: #475569; color: #475569; }
-
-.nav-dot.dot-cat-m00.active { background: #0d9488; border-color: #0d9488; color: white; }
-.nav-dot.dot-cat-m01.active { background: #2563eb; border-color: #2563eb; color: white; }
-.nav-dot.dot-cat-m02.active { background: #4f46e5; border-color: #4f46e5; color: white; }
-.nav-dot.dot-cat-m03.active { background: #e11d48; border-color: #e11d48; color: white; }
-.nav-dot.dot-cat-m04.active { background: #9333ea; border-color: #9333ea; color: white; }
-.nav-dot.dot-cat-m05.active { background: #ea580c; border-color: #ea580c; color: white; }
-.nav-dot.dot-cat-m06.active { background: #10b981; border-color: #10b981; color: white; }
-.nav-dot.dot-cat-m07.active { background: #475569; border-color: #475569; color: white; }
+.nav-dot.dot-cat-m00.active, .nav-dot.dot-cat-m00.has-selection { background: #0d9488; border-color: #0d9488; color: white; }
+.nav-dot.dot-cat-m01.active, .nav-dot.dot-cat-m01.has-selection { background: #2563eb; border-color: #2563eb; color: white; }
+.nav-dot.dot-cat-m02.active, .nav-dot.dot-cat-m02.has-selection { background: #4f46e5; border-color: #4f46e5; color: white; }
+.nav-dot.dot-cat-m03.active, .nav-dot.dot-cat-m03.has-selection { background: #e11d48; border-color: #e11d48; color: white; }
+.nav-dot.dot-cat-m04.active, .nav-dot.dot-cat-m04.has-selection { background: #9333ea; border-color: #9333ea; color: white; }
+.nav-dot.dot-cat-m05.active, .nav-dot.dot-cat-m05.has-selection { background: #ea580c; border-color: #ea580c; color: white; }
+.nav-dot.dot-cat-m06.active, .nav-dot.dot-cat-m06.has-selection { background: #10b981; border-color: #10b981; color: white; }
+.nav-dot.dot-cat-m07.active, .nav-dot.dot-cat-m07.has-selection { background: #475569; border-color: #475569; color: white; }
 
 .selected-tag:hover .selected-tag-remove {
     color: rgba(255,255,255,0.8);
@@ -2330,15 +2321,6 @@ body {
 .nav-dot.dot-cat-environment.active, .nav-dot.dot-cat-environment.has-selection { background: #059669; border-color: #059669; }
 .nav-dot.dot-cat-tech.active, .nav-dot.dot-cat-tech.has-selection { background: #4b5563; border-color: #4b5563; }
 .nav-dot.dot-cat-interior.active, .nav-dot.dot-cat-interior.has-selection { background: #dc2626; border-color: #dc2626; }
-
-.nav-dot.dot-cat-m00.active, .nav-dot.dot-cat-m00.has-selection { background: #0d9488; border-color: #0d9488; }
-.nav-dot.dot-cat-m01.active, .nav-dot.dot-cat-m01.has-selection { background: #2563eb; border-color: #2563eb; }
-.nav-dot.dot-cat-m02.active, .nav-dot.dot-cat-m02.has-selection { background: #4f46e5; border-color: #4f46e5; }
-.nav-dot.dot-cat-m03.active, .nav-dot.dot-cat-m03.has-selection { background: #e11d48; border-color: #e11d48; }
-.nav-dot.dot-cat-m04.active, .nav-dot.dot-cat-m04.has-selection { background: #9333ea; border-color: #9333ea; }
-.nav-dot.dot-cat-m05.active, .nav-dot.dot-cat-m05.has-selection { background: #ea580c; border-color: #ea580c; }
-.nav-dot.dot-cat-m06.active, .nav-dot.dot-cat-m06.has-selection { background: #10b981; border-color: #10b981; }
-.nav-dot.dot-cat-m07.active, .nav-dot.dot-cat-m07.has-selection { background: #475569; border-color: #475569; }
 
 /* ——— P1-2: 维度10 单选可视化 ——— */
 .radio-badge {
