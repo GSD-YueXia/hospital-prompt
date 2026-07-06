@@ -2315,12 +2315,12 @@ body {
 .dim-cat-interior .dimension-title      { color: var(--cat-color); }
 
 /* Nav dots also get category colors */
-.nav-dot.dot-cat-structure.active, .nav-dot.dot-cat-structure.has-selection { background: #2563eb; border-color: #2563eb; }
-.nav-dot.dot-cat-style.active, .nav-dot.dot-cat-style.has-selection { background: #7c3aed; border-color: #7c3aed; }
-.nav-dot.dot-cat-material.active, .nav-dot.dot-cat-material.has-selection { background: #d97706; border-color: #d97706; }
-.nav-dot.dot-cat-environment.active, .nav-dot.dot-cat-environment.has-selection { background: #059669; border-color: #059669; }
-.nav-dot.dot-cat-tech.active, .nav-dot.dot-cat-tech.has-selection { background: #4b5563; border-color: #4b5563; }
-.nav-dot.dot-cat-interior.active, .nav-dot.dot-cat-interior.has-selection { background: #dc2626; border-color: #dc2626; }
+.nav-dot.dot-cat-structure.active, .nav-dot.dot-cat-structure.has-selection { background: #2563eb; border-color: #2563eb; color: white; }
+.nav-dot.dot-cat-style.active, .nav-dot.dot-cat-style.has-selection { background: #7c3aed; border-color: #7c3aed; color: white; }
+.nav-dot.dot-cat-material.active, .nav-dot.dot-cat-material.has-selection { background: #d97706; border-color: #d97706; color: white; }
+.nav-dot.dot-cat-environment.active, .nav-dot.dot-cat-environment.has-selection { background: #059669; border-color: #059669; color: white; }
+.nav-dot.dot-cat-tech.active, .nav-dot.dot-cat-tech.has-selection { background: #4b5563; border-color: #4b5563; color: white; }
+.nav-dot.dot-cat-interior.active, .nav-dot.dot-cat-interior.has-selection { background: #dc2626; border-color: #dc2626; color: white; }
 
 /* ——— P1-2: 维度10 单选可视化 ——— */
 .radio-badge {
