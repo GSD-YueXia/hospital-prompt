@@ -2,8 +2,8 @@
 
 ## 仓库结构
 - 根仓库: `feature/prompt-sentence-engine` 分支 = 源码 (app.js, data.js, prompt-engine.js, analysis-data.js, index.html, style.css, test/, gen_data.py)
-- `dist/` 是嵌套 git 仓库，分支 `master` = GitHub Pages 发布分支 (remote: https://github.com/GSD-YueXia/hospital-prompt.git)
-- 部署流程: 改源码 → 同步 6 文件到 dist/ (`cp app.js data.js prompt-engine.js style.css index.html analysis-data.js dist/`) → 在 dist/ 内 `git add -A && commit && git push origin master` → 在根仓库 `git add <源码> dist && commit && git push origin feature/prompt-sentence-engine`
+- `dist/` 是嵌套 git 仓库；**GitHub Pages 实际发布分支是 `gh-pages`（不是 master！）**。master 只是源码工作分支，推送 master 不会更新线上站点；`origin/gh-pages` 上有 "触发 Pages 重建" 提交可佐证发布分支为 gh-pages。
+- 部署流程: 改源码 → 同步 6 文件到 dist/ (`cp app.js data.js prompt-engine.js style.css index.html analysis-data.js dist/`) → 在 dist/ 内 `git add -A && commit && git push origin master` → 再把新内容推到发布分支：`git checkout -B gh-pages origin/gh-pages && git merge --ff-only master && git push origin gh-pages && git checkout master`（gh-pages 是 master 的祖先，ff 合并安全，两分支最终指向同一 commit）→ 根仓库 `git add <源码> dist && commit && git push origin feature/prompt-sentence-engine`
 - CloudStudio: 用 `workbuddy_cloudstudio_deploy` 工具直接部署 `dist/` 目录 (自动生成分享链接，实时预览)
 
 ## 数据模型
@@ -28,4 +28,4 @@
 - wizard 步骤点/标签徽章颜色统一用 --accent (非 --cat-color) → 新增模块无需改 CSS 颜色
 - 数据 id 为字符串 ("1"-"13")，匹配 AI 图片解析 JSON 维度键
 - 根仓库排除二进制产物: test.jpg、结构导图V1.1.zip 等不入库
-- 改文案/数据后必须同步 dist/ 并推送 master 才会上线 GitHub Pages
+- 改文案/数据后必须同步 dist/，且**推送 `gh-pages` 分支**才会真正上线 GitHub Pages（仅推 master 无效）；保持 master 与 gh-pages 指向同一 commit
