@@ -14,7 +14,14 @@
         lang: 'en',          // 'en' | 'cn' | 'both'
         format: 'sentence',  // 'sentence' | 'keyword'
         mode: 'rendering',   // 'rendering' | 'analysis'
-        data: PROMPT_DATA    // from data.js (rendering) or ANALYSIS_PROMPT_DATA (analysis)
+        data: PROMPT_DATA,   // from data.js (rendering) or ANALYSIS_PROMPT_DATA (analysis)
+        currentStep: 0,      // wizard: current step index
+        steps: [],           // wizard: flattened categories
+        custom: {            // wizard: custom control values
+            buildingName: '',
+            palette: [],
+            refImage: null
+        }
     };
 
     // ===== DOM Refs =====
@@ -34,13 +41,414 @@
         updatePrompt();
     }
 
-    // ===== Render Dimensions =====
+    // ===== Render Dimensions (Wizard) =====
     function renderDimensions() {
+        renderWizard();
+    }
+
+    // ---------------------------------------------------------------
+    // 步骤向导：把数据扁平为「大类」步骤，每次只显示当前步
+    // ---------------------------------------------------------------
+    function buildSteps() {
+        state.steps = [];
         if (state.mode === 'analysis') {
-            renderAnalysisDimensions();
+            state.data.forEach(function(mod) {
+                mod.categories.forEach(function(cat, catIdx) {
+                    state.steps.push({
+                        moduleId: mod.id,
+                        moduleTitle: mod.title,
+                        catIdx: catIdx,
+                        catTitle: cat.title,
+                        role: cat.role,
+                        items: cat.items,
+                        custom: (mod.id === '1') ? 'reference' : null
+                    });
+                });
+            });
         } else {
-            renderRenderingDimensions();
+            state.data.forEach(function(dim) {
+                state.steps.push({
+                    dimId: dim.id,
+                    dimTitle: dim.title,
+                    catTitle: dim.title,
+                    role: dim.role,
+                    items: dim.items,
+                    colLayout: dim.col_layout,
+                    custom: null
+                });
+            });
         }
+    }
+
+    function renderWizard() {
+        buildSteps();
+        state.currentStep = 0;
+        dimensionsPanel.innerHTML =
+            '<div class="wizard">' +
+                '<div class="wizard-stepbar" id="wizardStepbar"></div>' +
+                '<div class="wizard-content" id="wizardContent"></div>' +
+                '<div class="wizard-nav">' +
+                    '<button class="btn-wizard-nav btn-wizard-prev" id="btnWizardPrev">' +
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>上一步' +
+                    '</button>' +
+                    '<div class="wizard-nav-center">' +
+                        '<div class="wizard-progress-text" id="wizardProgressText"></div>' +
+                        '<div class="wizard-progress-bar"><div class="wizard-progress-fill" id="wizardProgressFill"></div></div>' +
+                    '</div>' +
+                    '<button class="btn-wizard-nav btn-wizard-next" id="btnWizardNext">下一步' +
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
+        bindWizardNav();
+        renderWizardStepbar();
+        renderWizardContent();
+    }
+
+    function bindWizardNav() {
+        var prev = document.getElementById('btnWizardPrev');
+        var next = document.getElementById('btnWizardNext');
+        if (prev) prev.addEventListener('click', prevStep);
+        if (next) next.addEventListener('click', nextStep);
+    }
+
+    function goToStep(idx) {
+        if (idx < 0 || idx >= state.steps.length) return;
+        state.currentStep = idx;
+        renderWizardStepbar();
+        renderWizardContent();
+    }
+
+    function nextStep() {
+        if (state.currentStep < state.steps.length - 1) {
+            goToStep(state.currentStep + 1);
+        } else {
+            // 最后一步：生成 / 复制提示词
+            var text = promptText.textContent.trim();
+            if (text && !text.startsWith('选择提示词后')) {
+                copyToClipboard(text);
+            } else {
+                showToast('请先选择提示词');
+            }
+        }
+    }
+
+    function prevStep() {
+        if (state.currentStep > 0) goToStep(state.currentStep - 1);
+    }
+
+    function getStepDotClass(step) {
+        if (state.mode === 'analysis') return getModuleDotClass(step.moduleId);
+        return '';
+    }
+
+    function renderWizardStepbar() {
+        var bar = document.getElementById('wizardStepbar');
+        if (!bar) return;
+        var html = '';
+        state.steps.forEach(function(step, i) {
+            html += '<button class="wizard-dot ' + getStepDotClass(step) + '" data-step="' + i + '" title="' + escapeHtml(shortCatTitle(step.catTitle)) + '" tabindex="0" aria-label="步骤 ' + (i + 1) + ' ' + escapeHtml(shortCatTitle(step.catTitle)) + '">' + (i + 1) + '</button>';
+        });
+        bar.innerHTML = html;
+        bar.querySelectorAll('.wizard-dot').forEach(function(d) {
+            d.addEventListener('click', function() { goToStep(parseInt(this.dataset.step, 10)); });
+        });
+        updateWizardStepbar();
+    }
+
+    function stepHasSelection(i) {
+        var step = state.steps[i];
+        if (!step) return false;
+        var found = false;
+        state.selected.forEach(function(val) {
+            if (state.mode === 'analysis') {
+                if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) found = true;
+            } else {
+                if (val.dimId === step.dimId) found = true;
+            }
+        });
+        return found;
+    }
+
+    function updateWizardStepbar() {
+        var bar = document.getElementById('wizardStepbar');
+        if (!bar) return;
+        var total = state.steps.length;
+        bar.querySelectorAll('.wizard-dot').forEach(function(d) {
+            var i = parseInt(d.dataset.step, 10);
+            d.classList.remove('active', 'past', 'future', 'has-selection');
+            if (i < state.currentStep) d.classList.add('past');
+            else if (i === state.currentStep) d.classList.add('active');
+            else d.classList.add('future');
+            if (stepHasSelection(i)) d.classList.add('has-selection');
+        });
+        var cur = state.steps[state.currentStep];
+        var pt = document.getElementById('wizardProgressText');
+        if (pt && cur) pt.textContent = (state.currentStep + 1) + ' / ' + total + ' · ' + shortCatTitle(cur.catTitle);
+        var fill = document.getElementById('wizardProgressFill');
+        if (fill) fill.style.width = ((state.currentStep + 1) / total * 100) + '%';
+        // 导航按钮状态
+        var prev = document.getElementById('btnWizardPrev');
+        var next = document.getElementById('btnWizardNext');
+        if (prev) prev.disabled = (state.currentStep === 0);
+        if (next) {
+            if (state.currentStep === total - 1) {
+                next.innerHTML = '生成 / 复制<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>';
+            } else {
+                next.innerHTML = '下一步<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>';
+            }
+        }
+    }
+
+    function countStepSelections(i) {
+        var step = state.steps[i];
+        if (!step) return 0;
+        var n = 0;
+        state.selected.forEach(function(val) {
+            if (state.mode === 'analysis') {
+                if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) n++;
+            } else {
+                if (val.dimId === step.dimId) n++;
+            }
+        });
+        return n;
+    }
+
+    function updateStepCountHeader() {
+        var badge = document.querySelector('.wizard-step-sub');
+        if (!badge) return;
+        var step = state.steps[state.currentStep];
+        if (!step) return;
+        badge.textContent = countStepSelections(state.currentStep) + ' / ' + step.items.length + ' 已选';
+    }
+
+    function renderWizardContent() {
+        var content = document.getElementById('wizardContent');
+        if (!content) return;
+        var step = state.steps[state.currentStep];
+        if (!step) return;
+
+        var badge, headerClass, title;
+        if (state.mode === 'analysis') {
+            badge = step.moduleId;
+            headerClass = getModuleSectionClass(step.moduleId);
+            title = shortCatTitle(step.catTitle);
+        } else {
+            badge = step.dimId;
+            headerClass = getDimCategoryClass(step.dimId);
+            title = step.catTitle;
+        }
+        var selCount = countStepSelections(state.currentStep);
+
+        var html = '<div class="wizard-step ' + headerClass + '">';
+        html += '<div class="wizard-step-header ' + headerClass + '">';
+        html += '<span class="wizard-step-badge">' + badge + '</span>';
+        html += '<div class="wizard-step-headtext">';
+        html += '<div class="wizard-step-title">' + escapeHtml(title) + '</div>';
+        html += '<div class="wizard-step-sub">' + selCount + ' / ' + step.items.length + ' 已选</div>';
+        html += '</div></div>';
+
+        html += '<div class="wizard-search"><svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" id="wizardSearch" placeholder="搜索本步词条（中英文）..." class="search-input"></div>';
+
+        html += buildCustomControl(step);
+
+        html += '<div class="wizard-tags" id="wizardTags">';
+        step.items.forEach(function(item, idx) {
+            if (state.mode === 'analysis') {
+                var mod = findModule(step.moduleId);
+                if (mod) html += renderAnalysisTag(mod, mod.categories[step.catIdx], item, step.catIdx, idx);
+            } else {
+                html += renderRenderingTag({ id: step.dimId }, item, idx);
+            }
+        });
+        html += '</div></div>';
+
+        content.innerHTML = html;
+        bindWizardTagEvents();
+        bindWizardCustomEvents(step);
+
+        var ws = document.getElementById('wizardSearch');
+        if (ws) ws.addEventListener('input', function() { filterWizardTags(this.value); });
+    }
+
+    function bindWizardTagEvents() {
+        document.querySelectorAll('#wizardTags .tag').forEach(function(tag) {
+            tag.addEventListener('click', function(e) {
+                if (e.target.closest('.tag-lock-toggle')) return;
+                onWizardTagClick(this);
+            });
+            tag.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onWizardTagClick(this); }
+            });
+        });
+    }
+
+    function onWizardTagClick(tagEl) {
+        if (state.mode === 'analysis') {
+            var moduleId = tagEl.dataset.moduleId;
+            var catIdx = parseInt(tagEl.dataset.catIdx, 10);
+            var itemIdx = parseInt(tagEl.dataset.itemIdx, 10);
+            toggleAnalysisSelection(moduleId, catIdx, itemIdx, tagEl);
+        } else {
+            var dimId = parseInt(tagEl.dataset.dimId, 10);
+            var itemIdx2 = parseInt(tagEl.dataset.itemIdx, 10);
+            toggleRenderingSelection(dimId, itemIdx2, tagEl);
+        }
+        updateStepCountHeader();
+    }
+
+    function filterWizardTags(query) {
+        query = (query || '').trim().toLowerCase();
+        document.querySelectorAll('#wizardTags .tag').forEach(function(tag) {
+            var text = tag.textContent.toLowerCase();
+            tag.classList.toggle('hidden', query && text.indexOf(query) === -1);
+        });
+    }
+
+    function buildCustomControl(step) {
+        if (state.mode === 'analysis' && step.moduleId === '1') {
+            var html = '<div class="wizard-custom">';
+            // 参考图上传
+            html += '<div class="wizard-upload">';
+            if (state.custom.refImage) {
+                html += '<div class="wizard-upload-preview"><img src="' + state.custom.refImage + '" alt="参考图"><button class="wizard-upload-remove" id="wizardUploadRemove" title="移除">×</button></div>';
+            } else {
+                html += '<div class="wizard-upload-zone" id="wizardUploadZone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>上传参考图</span></div>';
+            }
+            html += '<input type="file" id="wizardFileInput" accept="image/jpeg,image/png,image/webp" hidden></div>';
+            // 建筑名称
+            html += '<div class="wizard-field"><label>参考建筑名称</label><input type="text" id="wizardBuildingName" placeholder="输入建筑 / 事务所名称" value="' + escapeHtml(state.custom.buildingName) + '"></div>';
+            // 配色选择（选中「参考配色」时显示）
+            if (referenceColorSelected()) {
+                html += buildPalettePicker();
+            }
+            html += '</div>';
+            return html;
+        }
+        return '';
+    }
+
+    function referenceColorSelected() {
+        var sel = false;
+        state.selected.forEach(function(val) {
+            if (val.item && val.item.label === '参考配色') sel = true;
+        });
+        return sel;
+    }
+
+    function buildPalettePicker() {
+        var presets = ['#EF4444','#F97316','#F59E0B','#FBBF24','#10B981','#06B6D4','#3B82F6','#6366F1','#8B5CF6','#EC4899','#F472B6','#84CC16','#64748B','#FFFFFF','#111827'];
+        var html = '<div class="wizard-field"><label>参考配色</label><div class="palette-picker" id="palettePicker">';
+        presets.forEach(function(c) {
+            var on = state.custom.palette.indexOf(c) >= 0 ? ' selected' : '';
+            html += '<button class="palette-swatch' + on + '" data-color="' + c + '" style="background:' + c + '" title="' + c + '"></button>';
+        });
+        html += '</div><div class="palette-selected" id="paletteSelected">' + (state.custom.palette.length ? state.custom.palette.join(' ') : '未选择') + '</div></div>';
+        return html;
+    }
+
+    function bindWizardCustomEvents(step) {
+        // 参考图上传
+        var zone = document.getElementById('wizardUploadZone');
+        var fileInput = document.getElementById('wizardFileInput');
+        if (zone && fileInput) {
+            zone.addEventListener('click', function() { fileInput.click(); });
+            zone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('dragover'); });
+            zone.addEventListener('dragleave', function() { this.classList.remove('dragover'); });
+            zone.addEventListener('drop', function(e) {
+                e.preventDefault(); this.classList.remove('dragover');
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) handleWizardImageFile(e.dataTransfer.files[0]);
+            });
+            fileInput.addEventListener('change', function() { if (this.files && this.files[0]) handleWizardImageFile(this.files[0]); });
+        }
+        var rm = document.getElementById('wizardUploadRemove');
+        if (rm) rm.addEventListener('click', function() {
+            state.custom.refImage = null;
+            renderWizardContent();
+            updatePrompt();
+        });
+        // 建筑名称
+        var nameInput = document.getElementById('wizardBuildingName');
+        if (nameInput) nameInput.addEventListener('input', function() {
+            state.custom.buildingName = this.value;
+            updatePrompt();
+        });
+        // 配色
+        var picker = document.getElementById('palettePicker');
+        if (picker) picker.querySelectorAll('.palette-swatch').forEach(function(sw) {
+            sw.addEventListener('click', function() {
+                var c = this.dataset.color;
+                var idx = state.custom.palette.indexOf(c);
+                if (idx >= 0) state.custom.palette.splice(idx, 1);
+                else state.custom.palette.push(c);
+                this.classList.toggle('selected');
+                var out = document.getElementById('paletteSelected');
+                if (out) out.textContent = state.custom.palette.length ? state.custom.palette.join(' ') : '未选择';
+                updatePrompt();
+            });
+        });
+        // 输入控制：锁定开关
+        document.querySelectorAll('#wizardTags .tag-lock-toggle').forEach(function(t) {
+            t.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleLock(this.dataset.key);
+            });
+        });
+    }
+
+    function handleWizardImageFile(file) {
+        if (!file || !file.type.startsWith('image/')) return;
+        if (file.size > 20 * 1024 * 1024) { showToast('图片不能超过 20MB'); return; }
+        showToast('正在处理图片...');
+        if (typeof createImageBitmap === 'function') {
+            createImageBitmap(file).then(function(bmp) {
+                try { compressWizardImage(bmp); } finally { if (bmp.close) bmp.close(); }
+            }).catch(function() { readWizardImage(file); });
+        } else {
+            readWizardImage(file);
+        }
+        function compressWizardImage(source) {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            if (!ctx) { showToast('浏览器不支持 Canvas'); return; }
+            var maxDim = 1200, w = source.width, h = source.height;
+            if (w > maxDim || h > maxDim) {
+                if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+                else { w = Math.round(w * maxDim / h); h = maxDim; }
+            }
+            canvas.width = w; canvas.height = h;
+            ctx.drawImage(source, 0, 0, w, h);
+            state.custom.refImage = canvas.toDataURL('image/jpeg', 0.85);
+            renderWizardContent();
+            updatePrompt();
+        }
+        function readWizardImage(f) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                var img = new Image();
+                img.onload = function() { compressWizardImage(img); };
+                img.onerror = function() { showToast('图片加载失败'); };
+                img.src = e.target.result;
+            };
+            reader.onerror = function() { showToast('文件读取失败'); };
+            reader.readAsDataURL(f);
+        }
+    }
+
+    function toggleLock(key) {
+        if (!state.selected.has(key)) return;
+        var val = state.selected.get(key);
+        val.locked = !(val.locked !== false);
+        var toggle = document.querySelector('.tag-lock-toggle[data-key="' + key + '"]');
+        if (toggle) toggle.classList.toggle('on', val.locked !== false);
+        updatePrompt();
+    }
+
+    function shortCatTitle(t) {
+        if (!t) return t;
+        t = t.replace(/^第[一二三四五六七八九十]+类：/, '');
+        t = t.replace(/（[^）]*）$/, '');
+        return t.trim();
     }
 
     // ---------------------------------------------------------------
@@ -212,8 +620,13 @@
         var isSelected = state.selected.has(key);
         var tagContent = buildTagContent(item);
         var cls = isSelected ? 'tag selected' : 'tag';
+        var lockToggle = '';
+        if (cat.role && cat.role.indexOf('control_') === 0) {
+            var locked = isSelected ? (state.selected.get(key).locked !== false) : true;
+            lockToggle = '<button class="tag-lock-toggle' + (locked ? ' on' : '') + '" data-key="' + key + '" title="锁定 / 解锁" aria-label="锁定开关">🔒</button>';
+        }
         return '<span class="' + cls + '" data-module-id="' + mod.id + '" data-cat-idx="' + catIdx + '" data-item-idx="' + itemIdx + '" data-key="' + key + '" tabindex="0" role="checkbox" aria-checked="' + (isSelected ? 'true' : 'false') + '">' +
-            tagContent +
+            tagContent + lockToggle +
         '</span>';
     }
 
@@ -432,7 +845,7 @@
     // ===== Update Selected Tags Display =====
     function updateSelectedTags() {
         if (state.selected.size === 0) {
-            selectedTags.innerHTML = '<div class="empty-hint">从左侧选择提示词，将自动生成完整提示语</div>';
+            selectedTags.innerHTML = '<div class="empty-hint">在向导中选择提示词，将自动生成完整提示语</div>';
             return;
         }
 
@@ -469,6 +882,10 @@
                 scrollToSelection(this.dataset.key);
             });
         });
+
+        // 同步向导步骤条状态
+        updateWizardStepbar();
+        updateStepCountHeader();
     }
 
     // ===== Remove Selection =====
@@ -726,6 +1143,75 @@
         return list;
     }
 
+    // ===== Keyword Tree (Change 1) =====
+    function pad2(n) { n = String(n); return n.length >= 2 ? n : '0' + n; }
+
+    function itemText(item, lang) {
+        if (lang === 'en') return item.en || item.label;
+        if (lang === 'both') return item.label + ' / ' + (item.en || item.label);
+        return item.label;
+    }
+
+    function buildKeywordTree() {
+        var lang = state.lang;
+        var lines = [];
+
+        if (state.mode === 'analysis') {
+            var modCounter = 0;
+            state.data.forEach(function(mod) {
+                var modSels = [];
+                state.selected.forEach(function(val) {
+                    if (val.moduleId === mod.id) modSels.push(val);
+                });
+                if (!modSels.length) return;
+                modCounter++;
+                modSels.sort(function(a, b) { return (a.catIdx - b.catIdx) || (a.itemIdx - b.itemIdx); });
+
+                var modNum = pad2(modCounter);
+                var prevCat = null;
+                modSels.forEach(function(val, i) {
+                    var txt = itemText(val.item, lang);
+                    if (val.locked !== false && val.role && val.role.indexOf('control_') === 0) txt += '（锁）';
+                    var catShort = shortCatTitle(val.catTitle);
+                    if (i === 0) {
+                        if (catShort === mod.title) {
+                            lines.push(modNum + '-' + mod.title + ':' + txt);
+                        } else {
+                            lines.push(modNum + '-' + mod.title + '-' + catShort + ':' + txt);
+                        }
+                    } else {
+                        if (catShort === prevCat) {
+                            lines.push('-' + txt);
+                        } else {
+                            lines.push('-' + catShort + ':' + txt);
+                        }
+                    }
+                    prevCat = catShort;
+                });
+            });
+        } else {
+            var dimCounter = 0;
+            state.data.forEach(function(dim) {
+                var dimSels = [];
+                state.selected.forEach(function(val) {
+                    if (val.dimId !== dim.id) return;
+                    if (dim.id === 10 && val.item.label === 'SD负面固定包') return;
+                    dimSels.push(val);
+                });
+                if (!dimSels.length) return;
+                dimCounter++;
+                dimSels.sort(function(a, b) { return a.itemIdx - b.itemIdx; });
+                var dimNum = pad2(dimCounter);
+                dimSels.forEach(function(val, i) {
+                    var txt = itemText(val.item, lang);
+                    if (i === 0) lines.push(dimNum + '-' + dim.title + ':' + txt);
+                    else lines.push('-' + txt);
+                });
+            });
+        }
+        return lines.join('\n');
+    }
+
     // ===== Generate Prompt =====
     function updatePrompt() {
         var count = state.selected.size;
@@ -746,18 +1232,17 @@
         // Build prompt
         var selections = buildSelectionsList();
         var promptStr;
-        if (state.mode === 'analysis') {
-            promptStr = state.format === 'keyword'
-                ? PromptEngine.buildAnalysisKeyword(selections, state.lang)
-                : PromptEngine.buildAnalysisSentence(selections, state.lang);
+        if (state.format === 'keyword') {
+            // 关键词模式统一使用树状结构
+            promptStr = buildKeywordTree();
+        } else if (state.mode === 'analysis') {
+            promptStr = PromptEngine.buildAnalysisSentence(selections, state.lang);
         } else {
-            promptStr = state.format === 'keyword'
-                ? PromptEngine.buildKeywordPhrase(selections, state.lang)
-                : PromptEngine.buildSentence(selections, state.lang);
+            promptStr = PromptEngine.buildSentence(selections, state.lang);
         }
 
         // 'both' mode - append Chinese
-        if (state.lang === 'both' && state.mode === 'rendering') {
+        if (state.lang === 'both' && state.mode === 'rendering' && state.format !== 'keyword') {
             var dimGroups = {};
             state.data.forEach(function(dim) {
                 state.selected.forEach(function(val) {
@@ -780,13 +1265,27 @@
         }
 
         // 'both' mode - analysis: append Chinese labels
-        if (state.lang === 'both' && state.mode === 'analysis') {
+        if (state.lang === 'both' && state.mode === 'analysis' && state.format !== 'keyword') {
             var analysisCnParts = [];
             selections.forEach(function(sel) {
                 if (sel.cn) analysisCnParts.push(sel.cn);
             });
             if (analysisCnParts.length > 0) {
                 promptStr += '\n\n中文参考：' + analysisCnParts.join('、');
+            }
+        }
+
+        // Custom control values (analysis reference step)
+        if (state.mode === 'analysis') {
+            var extra = [];
+            if (state.custom.buildingName && state.custom.buildingName.trim()) {
+                extra.push('参考建筑名称：' + state.custom.buildingName.trim());
+            }
+            if (state.custom.palette && state.custom.palette.length) {
+                extra.push('参考配色：' + state.custom.palette.join(' '));
+            }
+            if (extra.length) {
+                promptStr += (promptStr ? '\n\n' : '') + extra.join('\n');
             }
         }
 
@@ -935,6 +1434,8 @@
         state.mode = newMode;
         state.data = (newMode === 'analysis') ? ANALYSIS_PROMPT_DATA : PROMPT_DATA;
         state.selected.clear();
+        state.custom = { buildingName: '', palette: [], refImage: null };
+        state.currentStep = 0;
         scrollTrackingBound = false;
         renderDimensions();
         updateSelectedTags();
