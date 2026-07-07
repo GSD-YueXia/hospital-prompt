@@ -301,7 +301,6 @@
     function bindWizardTagEvents() {
         document.querySelectorAll('#wizardTags .tag').forEach(function(tag) {
             tag.addEventListener('click', function(e) {
-                if (e.target.closest('.tag-lock-toggle')) return;
                 onWizardTagClick(this);
             });
             tag.addEventListener('keydown', function(e) {
@@ -414,13 +413,6 @@
                 updatePrompt();
             });
         });
-        // 输入控制：锁定开关
-        document.querySelectorAll('#wizardTags .tag-lock-toggle').forEach(function(t) {
-            t.addEventListener('click', function(e) {
-                e.stopPropagation();
-                toggleLock(this.dataset.key);
-            });
-        });
     }
 
     function handleWizardImageFile(file) {
@@ -460,15 +452,6 @@
             reader.onerror = function() { showToast('文件读取失败'); };
             reader.readAsDataURL(f);
         }
-    }
-
-    function toggleLock(key) {
-        if (!state.selected.has(key)) return;
-        var val = state.selected.get(key);
-        val.locked = !(val.locked !== false);
-        var toggle = document.querySelector('.tag-lock-toggle[data-key="' + key + '"]');
-        if (toggle) toggle.classList.toggle('on', val.locked !== false);
-        updatePrompt();
     }
 
     function shortCatTitle(t) {
@@ -647,13 +630,8 @@
         var isSelected = state.selected.has(key);
         var tagContent = buildTagContent(item);
         var cls = isSelected ? 'tag selected' : 'tag';
-        var lockToggle = '';
-        if (cat.role && cat.role.indexOf('control_') === 0) {
-            var locked = isSelected ? (state.selected.get(key).locked !== false) : true;
-            lockToggle = '<button class="tag-lock-toggle' + (locked ? ' on' : '') + '" data-key="' + key + '" title="锁定 / 解锁" aria-label="锁定开关">🔒</button>';
-        }
         return '<span class="' + cls + '" data-module-id="' + mod.id + '" data-cat-idx="' + catIdx + '" data-item-idx="' + itemIdx + '" data-key="' + key + '" tabindex="0" role="checkbox" aria-checked="' + (isSelected ? 'true' : 'false') + '">' +
-            tagContent + lockToggle +
+            tagContent +
         '</span>';
     }
 
@@ -1198,7 +1176,6 @@
                 var prevCat = null;
                 modSels.forEach(function(val, i) {
                     var txt = itemText(val.item, lang);
-                    if (val.locked !== false && val.role && val.role.indexOf('control_') === 0) txt += '（锁）';
                     var catShort = shortCatTitle(val.catTitle);
                     if (i === 0) {
                         if (catShort === mod.title) {
