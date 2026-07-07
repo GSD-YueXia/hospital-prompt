@@ -1157,6 +1157,83 @@
         return item.label;
     }
 
+    // ===== 关键词树状图：英文模式下的模块 / 类别 / 维度英文名 =====
+    var MODULE_EN = {
+        '1': 'Reference Source',
+        '2': 'Input Control',
+        '3': 'Design Intent',
+        '4': 'Architectural Logic',
+        '5': 'Visual Grammar',
+        '6': 'Architectural Representation',
+        '7': 'Visual Style',
+        '8': 'Output Quality'
+    };
+    var CATEGORY_EN = {
+        'reference': 'Reference Source',
+        'control_geometry': 'Geometry Lock',
+        'control_context': 'Context Lock',
+        'control_camera': 'Camera Lock',
+        'control_editable': 'Editable Layers',
+        'control_semantic': 'Semantic Lock',
+        'control_forbidden': 'Forbidden',
+        'control_priority': 'Priority',
+        'control_level': 'Constraint Level',
+        'intent_goal': 'Design Goal',
+        'intent_analysis': 'Analysis Goal',
+        'intent_deliverable': 'Deliverable Type',
+        'intent_mode': 'Work Mode',
+        'intent_scope': 'Work Scope',
+        'intent_audience': 'Audience',
+        'logic_spatial': 'Spatial Logic',
+        'logic_functional': 'Functional Logic',
+        'logic_environmental': 'Environmental Logic',
+        'logic_urban': 'Urban Logic',
+        'logic_architectural': 'Architectural Form Operation',
+        'logic_experience': 'Experience',
+        'logic_value': 'Value',
+        'grammar_elements': 'Diagram Elements',
+        'grammar_symbols': 'Graphic Symbols',
+        'grammar_relationship': 'Relationship Expression',
+        'grammar_type': 'Diagram Type',
+        'rep_rendering': 'Rendering Type',
+        'rep_drawing': 'Drawing Type',
+        'rep_detail': 'Detail Level',
+        'rep_finish': 'Finish Level',
+        'rep_expression': 'Expression Style',
+        'style_color': 'Color System',
+        'style_material': 'Material',
+        'style_texture': 'Texture',
+        'style_lighting': 'Lighting & Shadow',
+        'style_atmosphere': 'Atmosphere',
+        'style_brand': 'Brand Style / Studio',
+        'style_graphic': 'Graphic Language / Layout',
+        'output_quality': 'Quality',
+        'output_canvas': 'Canvas',
+        'output_composition': 'Composition',
+        'output_editability': 'Editability',
+        'output_consistency': 'Visual Consistency'
+    };
+    var RENDER_DIM_EN = {
+        1: 'Building Typology / Medical Function Module',
+        2: 'Space Type (Interior/Exterior)',
+        3: 'Architectural Style / Design Language',
+        4: 'Facade / Skin Material',
+        5: 'Color Scheme',
+        6: 'Light / Time',
+        7: 'Viewpoint / Camera',
+        8: 'Environment / Context',
+        9: 'Atmosphere / Mood',
+        10: 'Common Suffix / Render Params',
+        11: 'Medical Furniture / Equipment',
+        12: 'Natural Elements / Landscape',
+        13: 'Layout / Massing Form',
+        14: 'Hospital Specialized Details',
+        15: 'Interior Lighting / Finish Details'
+    };
+    function getModuleEn(id) { return MODULE_EN[id] || id; }
+    function getCatEnRole(role) { return CATEGORY_EN[role] || role; }
+    function getDimEn(id) { return RENDER_DIM_EN[id] || String(id); }
+
     function buildKeywordTree() {
         var lang = state.lang;
         var lines = [];
@@ -1173,24 +1250,31 @@
                 modSels.sort(function(a, b) { return (a.catIdx - b.catIdx) || (a.itemIdx - b.itemIdx); });
 
                 var modNum = pad2(modCounter);
+                var modName = (lang === 'en') ? getModuleEn(mod.id) : mod.title;
                 var prevCat = null;
                 modSels.forEach(function(val, i) {
                     var txt = itemText(val.item, lang);
-                    var catShort = shortCatTitle(val.catTitle);
+                    var catName;
+                    if (lang === 'en') {
+                        var role = findModule(mod.id).categories[val.catIdx].role;
+                        catName = getCatEnRole(role);
+                    } else {
+                        catName = shortCatTitle(val.catTitle);
+                    }
                     if (i === 0) {
-                        if (catShort === mod.title) {
-                            lines.push(modNum + '-' + mod.title + ':' + txt);
+                        if (catName === modName) {
+                            lines.push(modNum + '-' + modName + ':' + txt);
                         } else {
-                            lines.push(modNum + '-' + mod.title + '-' + catShort + ':' + txt);
+                            lines.push(modNum + '-' + modName + '-' + catName + ':' + txt);
                         }
                     } else {
-                        if (catShort === prevCat) {
+                        if (catName === prevCat) {
                             lines.push('-' + txt);
                         } else {
-                            lines.push('-' + catShort + ':' + txt);
+                            lines.push('-' + catName + ':' + txt);
                         }
                     }
-                    prevCat = catShort;
+                    prevCat = catName;
                 });
             });
         } else {
@@ -1206,9 +1290,10 @@
                 dimCounter++;
                 dimSels.sort(function(a, b) { return a.itemIdx - b.itemIdx; });
                 var dimNum = pad2(dimCounter);
+                var dimName = (lang === 'en') ? getDimEn(dim.id) : dim.title;
                 dimSels.forEach(function(val, i) {
                     var txt = itemText(val.item, lang);
-                    if (i === 0) lines.push(dimNum + '-' + dim.title + ':' + txt);
+                    if (i === 0) lines.push(dimNum + '-' + dimName + ':' + txt);
                     else lines.push('-' + txt);
                 });
             });
