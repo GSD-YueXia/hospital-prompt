@@ -53,16 +53,22 @@
         state.steps = [];
         if (state.mode === 'analysis') {
             state.data.forEach(function(mod) {
+                // 按模块聚合：每个模块 = 一步（M00-M07 共 8 步），步内再按类别分组
+                var allItems = [];
                 mod.categories.forEach(function(cat, catIdx) {
-                    state.steps.push({
-                        moduleId: mod.id,
-                        moduleTitle: mod.title,
-                        catIdx: catIdx,
-                        catTitle: cat.title,
-                        role: cat.role,
-                        items: cat.items,
-                        custom: (mod.id === '1') ? 'reference' : null
+                    cat.items.forEach(function(item, itemIdx) {
+                        allItems.push({ item: item, catIdx: catIdx, itemIdx: itemIdx, catTitle: cat.title });
                     });
+                });
+                state.steps.push({
+                    moduleId: mod.id,
+                    moduleTitle: mod.title,
+                    isModule: true,
+                    catIdx: -1,
+                    catTitle: mod.title,
+                    role: null,
+                    items: allItems,
+                    custom: (mod.id === '1') ? 'reference' : null
                 });
             });
         } else {
@@ -162,7 +168,9 @@
         var found = false;
         state.selected.forEach(function(val) {
             if (state.mode === 'analysis') {
-                if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) found = true;
+                if (step.isModule) {
+                    if (val.moduleId === step.moduleId) found = true;
+                } else if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) found = true;
             } else {
                 if (val.dimId === step.dimId) found = true;
             }
@@ -206,7 +214,9 @@
         var n = 0;
         state.selected.forEach(function(val) {
             if (state.mode === 'analysis') {
-                if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) n++;
+                if (step.isModule) {
+                    if (val.moduleId === step.moduleId) n++;
+                } else if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) n++;
             } else {
                 if (val.dimId === step.dimId) n++;
             }
@@ -253,14 +263,31 @@
         html += buildCustomControl(step);
 
         html += '<div class="wizard-tags" id="wizardTags">';
-        step.items.forEach(function(item, idx) {
-            if (state.mode === 'analysis') {
-                var mod = findModule(step.moduleId);
-                if (mod) html += renderAnalysisTag(mod, mod.categories[step.catIdx], item, step.catIdx, idx);
-            } else {
-                html += renderRenderingTag({ id: step.dimId }, item, idx);
+        if (state.mode === 'analysis') {
+            var mod = findModule(step.moduleId);
+            if (mod) {
+                if (step.isModule) {
+                    // 模块级步骤：按类别分组渲染
+                    mod.categories.forEach(function(cat, catIdx) {
+                        html += '<div class="wizard-cat-group">';
+                        html += '<div class="wizard-cat-title">' + escapeHtml(shortCatTitle(cat.title)) + '</div>';
+                        html += '<div class="wizard-cat-tags">';
+                        cat.items.forEach(function(item, itemIdx) {
+                            html += renderAnalysisTag(mod, cat, item, catIdx, itemIdx);
+                        });
+                        html += '</div></div>';
+                    });
+                } else {
+                    mod.categories[step.catIdx].items.forEach(function(item, idx) {
+                        html += renderAnalysisTag(mod, mod.categories[step.catIdx], item, step.catIdx, idx);
+                    });
+                }
             }
-        });
+        } else {
+            step.items.forEach(function(item, idx) {
+                html += renderRenderingTag({ id: step.dimId }, item, idx);
+            });
+        }
         html += '</div></div>';
 
         content.innerHTML = html;

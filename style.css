@@ -2653,6 +2653,27 @@ body {
     gap: 8px;
 }
 
+/* 模块级步骤：类别分组 */
+.wizard-cat-group {
+    width: 100%;
+    margin-bottom: 14px;
+}
+.wizard-cat-group:last-child { margin-bottom: 0; }
+.wizard-cat-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+    padding: 4px 0 8px;
+    margin: 0 0 8px;
+    border-bottom: 1px dashed var(--border);
+}
+.wizard-cat-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 /* 定制控件 */
 .wizard-custom {
     background: var(--bg-card);
