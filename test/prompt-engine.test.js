@@ -68,13 +68,13 @@ test('buildSentence: 同角色多选用逗号+and连接', () => {
   );
 });
 
-test('buildSentence: cn 语言模式使用中文词填模板', () => {
+test('buildSentence: cn 语言模式生成完整中文句子', () => {
   const selections = [
     { role: 'subject', en: 'Emergency department', cn: '急诊科' },
     { role: 'color', en: 'Warm white', cn: '暖白' }
   ];
   const result = PromptEngine.buildSentence(selections, 'cn');
-  assert.equal(result, 'A 急诊科, in a 暖白 color palette.');
+  assert.equal(result, '急诊科，暖白色调。');
 });
 
 test('buildSentence: 渲染参数(--开头)追加在句尾，不参与语法', () => {

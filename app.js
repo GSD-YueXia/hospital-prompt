@@ -711,7 +711,7 @@
             state.data.forEach(function(mod) {
                 state.selected.forEach(function(val) {
                     if (val.moduleId !== mod.id) return;
-                    list.push({ role: val.role, en: val.item.en, cn: val.item.cn });
+                    list.push({ role: val.role, en: val.item.en, cn: val.item.label });
                 });
             });
         } else {
@@ -776,6 +776,17 @@
             });
             if (cnParts.length > 0) {
                 promptStr += '\n\n中文参考：' + cnParts.join('、');
+            }
+        }
+
+        // 'both' mode - analysis: append Chinese labels
+        if (state.lang === 'both' && state.mode === 'analysis') {
+            var analysisCnParts = [];
+            selections.forEach(function(sel) {
+                if (sel.cn) analysisCnParts.push(sel.cn);
+            });
+            if (analysisCnParts.length > 0) {
+                promptStr += '\n\n中文参考：' + analysisCnParts.join('、');
             }
         }
 
