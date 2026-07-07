@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>医院建筑 AI 提示词生成器</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260706">
 </head>
 <body>
     <!-- Header -->
@@ -17,20 +17,32 @@
                 <span class="logo-text">医院建筑 AI 提示词生成器</span>
             </div>
             <div class="header-controls">
+                <div class="mode-switch" id="modeSwitch">
+                    <button class="mode-btn active" data-mode="rendering"><span>效果图</span></button>
+                    <button class="mode-btn" data-mode="analysis"><span>分析图</span></button>
+                </div>
                 <div class="lang-toggle">
                     <button class="lang-btn active" data-lang="en">English</button>
                     <button class="lang-btn" data-lang="cn">中文</button>
                     <button class="lang-btn" data-lang="both">双语</button>
                 </div>
                 <div class="format-toggle">
-                    <button class="format-btn active" data-format="sentence">语句模式</button>
-                    <button class="format-btn" data-format="keyword">关键词模式</button>
+                    <button class="format-btn active" data-format="sentence"><span>语句模式</span></button>
+                    <button class="format-btn" data-format="keyword"><span>关键词模式</span></button>
                 </div>
                 <button class="btn-clear" id="btnClear">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                         <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                     </svg>
-                    清空选择
+                    <span>清空选择</span>
+                </button>
+                <button class="btn-image-analysis" id="btnImageAnalysis">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <span>图片解析</span>
                 </button>
             </div>
         </div>
@@ -74,7 +86,7 @@
             <!-- Generated prompt -->
             <div class="prompt-output">
                 <div class="prompt-label">AI 提示词（可直接复制使用）</div>
-                <div class="prompt-text" id="promptText">
+                <div class="prompt-text" id="promptText" aria-live="polite" role="status">
                     <span class="prompt-placeholder">选择提示词后，完整提示语将显示在此处...</span>
                 </div>
             </div>
@@ -108,7 +120,145 @@
         </div>
     </div>
 
+    <!-- Image Analysis Modal -->
+    <div class="image-modal-overlay" id="imageModalOverlay">
+        <div class="image-modal">
+            <!-- Modal Header -->
+            <div class="image-modal-header">
+                <h2 class="image-modal-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    图片解析提示词
+                </h2>
+                <button class="image-modal-close" id="imageModalClose" title="关闭">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Tab Bar -->
+            <div class="image-modal-tabs">
+                <button class="image-modal-tab active" data-tab="current" id="tabCurrent">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    图片分析
+                </button>
+                <button class="image-modal-tab" data-tab="history" id="tabHistory">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    历史记录
+                    <span class="history-count" id="historyCountBadge" style="display:none;">0</span>
+                </button>
+            </div>
+
+            <!-- Tab: Current Analysis -->
+            <div class="image-modal-tab-panel active" id="tabPanelCurrent">
+                <div class="image-modal-body">
+                    <!-- Left: Upload & Preview -->
+                    <div class="image-upload-section">
+                        <!-- Upload area -->
+                        <div class="upload-zone" id="uploadZone">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <p class="upload-text">点击或拖拽图片到此处</p>
+                            <p class="upload-hint">支持 JPG / PNG / WebP，最大 20MB</p>
+                            <input type="file" id="imageFileInput" accept="image/jpeg,image/png,image/webp" hidden>
+                        </div>
+
+                        <!-- Image preview -->
+                        <div class="image-preview" id="imagePreview" style="display:none;">
+                            <img id="previewImg" alt="预览图">
+                            <button class="btn-reupload" id="btnReupload">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                    <path d="M21 3v5h-5"/>
+                                </svg>
+                                重新上传
+                            </button>
+                        </div>
+
+                        <!-- API Key input -->
+                        <div class="api-key-section">
+                            <label class="api-key-label">
+                                DeepSeek API Key
+                                <span class="api-key-hint">（存储在浏览器本地，不会上传服务器）</span>
+                            </label>
+                            <div class="api-key-input-row">
+                                <input type="password" id="apiKeyInput" class="api-key-input" placeholder="sk-xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+                                <button class="btn-save-key" id="btnSaveKey">保存</button>
+                            </div>
+                            <a href="https://platform.deepseek.com/api_keys" target="_blank" class="api-key-link">获取 DeepSeek API Key →</a>
+                        </div>
+
+                        <!-- Analyze button -->
+                        <button class="btn-analyze" id="btnAnalyze" disabled>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                                <path d="M9 11l3 3L22 4"/>
+                                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                            </svg>
+                            <span class="btn-analyze-text">开始解析</span>
+                        </button>
+                    </div>
+
+                    <!-- Right: Analysis Results -->
+                    <div class="analysis-results" id="analysisResults">
+                        <div class="analysis-empty">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="64" height="64">
+                                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                            </svg>
+                            <p>上传图片并点击"开始解析"<br>AI 将自动分析建筑风格、材质、光影等维度<br>并生成可用的提示词</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="image-modal-footer" id="imageModalFooter" style="display:none;">
+                    <button class="btn-apply-tags" id="btnApplyTags">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        应用到提示词选择器
+                    </button>
+                    <button class="btn-copy-prompt" id="btnCopyImagePrompt">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                        </svg>
+                        复制完整提示词
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab: History -->
+            <div class="image-modal-tab-panel" id="tabPanelHistory">
+                <div class="history-panel" id="historyPanel">
+                    <div class="analysis-empty">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <p>暂无历史记录<br>解析图片后将自动保存到此处</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="data.js"></script>
+    <script src="analysis-data.js"></script>
     <script src="prompt-engine.js"></script>
     <script src="app.js"></script>
 </body>

@@ -1,8 +1,9 @@
 /**
  * 医院建筑 AI 提示词生成器
  * 核心逻辑：点击维度标签 → 自动组合生成完整 AI 提示词
- * 效果图模式：扁平结构 data.js
+ * 效果图模式：三级嵌套结构 data.js（模块1-13 → 类别 → 词条）
  * 分析图模式：三级嵌套结构 analysis-data.js（模块1-8 → 类别 → 词条）
+ * 两种模式共用「模块 → 类别 → 词条」模型与向导式 UI
  */
 
 (function() {
@@ -10,7 +11,7 @@
 
     // ===== State =====
     const state = {
-        selected: new Map(), // key: "moduleId::catIdx::itemIdx" (analysis) or "dimId-itemIdx" (rendering)
+        selected: new Map(), // key: "moduleId::catIdx::itemIdx"（效果图与分析图共用）
         lang: 'en',          // 'en' | 'cn' | 'both'
         format: 'sentence',  // 'sentence' | 'keyword'
         mode: 'rendering',   // 'rendering' | 'analysis'
@@ -72,14 +73,22 @@
                 });
             });
         } else {
-            state.data.forEach(function(dim) {
+            // 效果图模式：数据结构与分析图一致（模块 → 类别 → 词条）
+            state.data.forEach(function(mod) {
+                var allItems = [];
+                mod.categories.forEach(function(cat, catIdx) {
+                    cat.items.forEach(function(item, itemIdx) {
+                        allItems.push({ item: item, catIdx: catIdx, itemIdx: itemIdx, catTitle: cat.title });
+                    });
+                });
                 state.steps.push({
-                    dimId: dim.id,
-                    dimTitle: dim.title,
-                    catTitle: dim.title,
-                    role: dim.role,
-                    items: dim.items,
-                    colLayout: dim.col_layout,
+                    moduleId: mod.id,
+                    moduleTitle: mod.title,
+                    isModule: true,
+                    catIdx: -1,
+                    catTitle: mod.title,
+                    role: null,
+                    items: allItems,
                     custom: null
                 });
             });
@@ -144,8 +153,7 @@
     }
 
     function getStepDotClass(step) {
-        if (state.mode === 'analysis') return getModuleDotClass(step.moduleId);
-        return '';
+        return getModuleDotClass(step.moduleId);
     }
 
     function renderWizardStepbar() {
@@ -172,7 +180,7 @@
                     if (val.moduleId === step.moduleId) found = true;
                 } else if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) found = true;
             } else {
-                if (val.dimId === step.dimId) found = true;
+                if (val.moduleId === step.moduleId) found = true;
             }
         });
         return found;
@@ -218,7 +226,7 @@
                     if (val.moduleId === step.moduleId) n++;
                 } else if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) n++;
             } else {
-                if (val.dimId === step.dimId) n++;
+                if (val.moduleId === step.moduleId) n++;
             }
         });
         return n;
@@ -239,15 +247,9 @@
         if (!step) return;
 
         var badge, headerClass, title;
-        if (state.mode === 'analysis') {
-            badge = step.moduleId;
-            headerClass = getModuleSectionClass(step.moduleId);
-            title = shortCatTitle(step.catTitle);
-        } else {
-            badge = step.dimId;
-            headerClass = getDimCategoryClass(step.dimId);
-            title = step.catTitle;
-        }
+        badge = step.moduleId;
+        headerClass = getModuleSectionClass(step.moduleId);
+        title = shortCatTitle(step.catTitle);
         var selCount = countStepSelections(state.currentStep);
 
         var html = '<div class="wizard-step ' + headerClass + '">';
@@ -284,9 +286,18 @@
                 }
             }
         } else {
-            step.items.forEach(function(item, idx) {
-                html += renderRenderingTag({ id: step.dimId }, item, idx);
-            });
+            var rMod = findModule(step.moduleId);
+            if (rMod) {
+                rMod.categories.forEach(function(cat, catIdx) {
+                    html += '<div class="wizard-cat-group">';
+                    html += '<div class="wizard-cat-title">' + escapeHtml(shortCatTitle(cat.title)) + '</div>';
+                    html += '<div class="wizard-cat-tags">';
+                    cat.items.forEach(function(item, itemIdx) {
+                        html += renderAnalysisTag(rMod, cat, item, catIdx, itemIdx);
+                    });
+                    html += '</div></div>';
+                });
+            }
         }
         html += '</div></div>';
 
@@ -316,9 +327,10 @@
             var itemIdx = parseInt(tagEl.dataset.itemIdx, 10);
             toggleAnalysisSelection(moduleId, catIdx, itemIdx, tagEl);
         } else {
-            var dimId = parseInt(tagEl.dataset.dimId, 10);
+            var moduleId = tagEl.dataset.moduleId;
+            var catIdx = parseInt(tagEl.dataset.catIdx, 10);
             var itemIdx2 = parseInt(tagEl.dataset.itemIdx, 10);
-            toggleRenderingSelection(dimId, itemIdx2, tagEl);
+            toggleAnalysisSelection(moduleId, catIdx, itemIdx2, tagEl);
         }
         updateStepCountHeader();
     }
@@ -462,56 +474,8 @@
     }
 
     // ---------------------------------------------------------------
-    // 效果图模式渲染 (扁平结构)
-    // ---------------------------------------------------------------
-    function renderRenderingDimensions() {
-        var html = buildSearchBarHtml();
-
-        // Nav dots index bar
-        html += '<div class="nav-dots-bar" id="navDotsBar">';
-        state.data.forEach(function(dim) {
-            var catClass = getDimCategoryClass(dim.id);
-            html += '<button class="nav-dot ' + catClass + '" data-dim-id="' + dim.id + '" title="' + dim.title + '" tabindex="0" aria-label="跳转到' + dim.title + '">' + dim.id + '</button>';
-        });
-        html += '</div>';
-
-        state.data.forEach(function(dim) {
-            var catClass = getDimCategoryClass(dim.id);
-            var hasRadioBadge = (dim.col_layout === 'render_param') ? '<span class="radio-badge">单选</span>' : '';
-
-            var tagsHtml = dim.items.map(function(item, idx) {
-                return renderRenderingTag(dim, item, idx);
-            }).join('');
-
-            html += '<div class="dimension-section ' + catClass + (dim.col_layout === 'render_param' ? ' dim-single-select' : '') + '" data-dim-id="' + dim.id + '" id="dimSection-' + dim.id + '">' +
-                '<div class="dimension-header" data-dim-id="' + dim.id + '" tabindex="0" role="button" aria-expanded="true">' +
-                    '<div class="dimension-header-left">' +
-                        '<span class="dimension-number">' + dim.id + '</span>' +
-                        '<span class="dimension-title">' + dim.title + hasRadioBadge + '</span>' +
-                    '</div>' +
-                    '<div class="dimension-header-right">' +
-                        '<span class="dimension-count" id="count-' + dim.id + '">' + dim.items.length + '</span>' +
-                        '<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">' +
-                            '<polyline points="6 9 12 15 18 9"/>' +
-                        '</svg>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="dimension-body">' +
-                    '<div class="dimension-tags" data-dim-id="' + dim.id + '">' +
-                        tagsHtml +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-        });
-
-        html += buildBackToTopHtml();
-        dimensionsPanel.innerHTML = html;
-        bindTagEvents();
-        bindHeaderEvents();
-        bindNavDotEvents();
-        bindScrollTracking();
-        bindBackToTop();
-    }
+    // 效果图模式现统一使用向导式 UI（renderWizard），与分析图共用「模块 → 类别 → 词条」结构。
+    // 旧的完整面板渲染函数 renderRenderingDimensions 已被向导取代，不再使用。
 
     // ---------------------------------------------------------------
     // 分析图模式渲染 (三级嵌套: 模块 → 类别 → 词条)
@@ -613,17 +577,6 @@
         '</button>';
     }
 
-    // ===== Render Rendering Tag =====
-    function renderRenderingTag(dim, item, idx) {
-        var key = dim.id + '-' + idx;
-        var isSelected = state.selected.has(key);
-        var tagContent = buildTagContent(item);
-        var cls = isSelected ? 'tag selected' : 'tag';
-        return '<span class="' + cls + '" data-dim-id="' + dim.id + '" data-item-idx="' + idx + '" data-key="' + key + '" tabindex="0" role="checkbox" aria-checked="' + (isSelected ? 'true' : 'false') + '">' +
-            tagContent +
-        '</span>';
-    }
-
     // ===== Render Analysis Tag =====
     function renderAnalysisTag(mod, cat, item, catIdx, itemIdx) {
         var key = mod.id + '::' + catIdx + '::' + itemIdx;
@@ -656,24 +609,6 @@
     }
 
     // ===== Event Binding =====
-
-    function bindTagEvents() {
-        document.querySelectorAll('.tag').forEach(function(tag) {
-            tag.addEventListener('click', function() {
-                var dimId = parseInt(this.dataset.dimId);
-                var itemIdx = parseInt(this.dataset.itemIdx);
-                toggleRenderingSelection(dimId, itemIdx, this);
-            });
-            tag.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    var dimId = parseInt(this.dataset.dimId);
-                    var itemIdx = parseInt(this.dataset.itemIdx);
-                    toggleRenderingSelection(dimId, itemIdx, this);
-                }
-            });
-        });
-    }
 
     function bindAnalysisTagEvents() {
         document.querySelectorAll('.tag').forEach(function(tag) {
@@ -746,19 +681,6 @@
         });
     }
 
-    function bindNavDotEvents() {
-        document.querySelectorAll('.nav-dot').forEach(function(dot) {
-            dot.addEventListener('click', function() {
-                var dimId = this.dataset.dimId;
-                var section = document.getElementById('dimSection-' + dimId);
-                if (section) {
-                    section.classList.remove('collapsed');
-                    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            });
-        });
-    }
-
     function bindAnalysisNavDotEvents() {
         document.querySelectorAll('.nav-dot').forEach(function(dot) {
             dot.addEventListener('click', function() {
@@ -782,38 +704,6 @@
     }
 
     // ===== Toggle Selection =====
-
-    function toggleRenderingSelection(dimId, itemIdx, tagEl) {
-        var key = dimId + '-' + itemIdx;
-        var dim = state.data.find(function(d) { return d.id === dimId; });
-        if (!dim) return;
-        var item = dim.items[itemIdx];
-        if (!item) return;
-
-        if (state.selected.has(key)) {
-            state.selected.delete(key);
-            tagEl.classList.remove('selected');
-            tagEl.setAttribute('aria-checked', 'false');
-        } else {
-            // For dim 10 (render param), only one selection
-            if (dimId === 10) {
-                state.selected.forEach(function(val, k) {
-                    if (k.startsWith('10-')) {
-                        state.selected.delete(k);
-                        var existingTag = document.querySelector('.tag[data-key="' + k + '"]');
-                        if (existingTag) existingTag.classList.remove('selected');
-                    }
-                });
-            }
-            state.selected.set(key, { dimId: dimId, itemIdx: itemIdx, item: item, dimTitle: dim.title });
-            tagEl.classList.add('selected');
-            tagEl.setAttribute('aria-checked', 'true');
-        }
-
-        updateSelectedTags();
-        updateDimensionCounts();
-        updatePrompt();
-    }
 
     function toggleAnalysisSelection(moduleId, catIdx, itemIdx, tagEl) {
         var key = moduleId + '::' + catIdx + '::' + itemIdx;
@@ -859,11 +749,7 @@
             var label = val.item.label;
             var badge;
 
-            if (state.mode === 'analysis') {
-                badge = '<span class="selected-tag-dim">' + val.moduleId + '</span>';
-            } else {
-                badge = '<span class="selected-tag-dim">D' + val.dimId + '</span>';
-            }
+            badge = '<span class="selected-tag-dim">' + val.moduleId + '</span>';
 
             html += '<span class="selected-tag" data-key="' + key + '">' +
                 badge + label +
@@ -926,37 +812,9 @@
 
     // ===== Update Dimension Counts =====
     function updateDimensionCounts() {
-        if (state.mode === 'analysis') {
-            updateAnalysisCounts();
-        } else {
-            updateRenderingCounts();
-        }
+        // 两种模式结构一致（模块 → 类别 → 词条），统一走 analysis 计数逻辑
+        updateAnalysisCounts();
         updateNavDotSelectionState();
-    }
-
-    function updateRenderingCounts() {
-        state.data.forEach(function(dim) {
-            var countEl = document.getElementById('count-' + dim.id);
-            if (countEl) {
-                countEl.textContent = dim.items.length;
-                countEl.classList.remove('has-selection');
-            }
-        });
-
-        var counts = {};
-        state.selected.forEach(function(val) {
-            counts[val.dimId] = (counts[val.dimId] || 0) + 1;
-        });
-
-        Object.keys(counts).forEach(function(dimId) {
-            var countEl = document.getElementById('count-' + dimId);
-            if (countEl) {
-                var dim = state.data.find(function(d) { return d.id === parseInt(dimId); });
-                var total = dim ? dim.items.length : 0;
-                countEl.textContent = counts[dimId] + '/' + total;
-                countEl.classList.add('has-selection');
-            }
-        });
     }
 
     function updateAnalysisCounts() {
@@ -1038,14 +896,14 @@
                 var panelRect = dimensionsPanel.getBoundingClientRect();
                 var relativeTop = rect.top - panelRect.top;
                 if (relativeTop >= -20 && relativeTop < panelHeight * 0.4) {
-                    currentId = section.dataset.dimId;
+                    currentId = section.dataset.moduleId;
                 }
             });
         }
 
         document.querySelectorAll('.nav-dot').forEach(function(dot) {
             dot.classList.remove('active');
-            var dotId = state.mode === 'analysis' ? dot.dataset.moduleId : dot.dataset.dimId;
+            var dotId = dot.dataset.moduleId;
             if (dotId === currentId) {
                 dot.classList.add('active');
             }
@@ -1068,9 +926,8 @@
         });
 
         state.selected.forEach(function(val) {
-            var dotId = state.mode === 'analysis' ? val.moduleId : val.dimId;
-            var selector = state.mode === 'analysis' ? '.nav-dot[data-module-id="' + dotId + '"]' : '.nav-dot[data-dim-id="' + dotId + '"]';
-            var dot = document.querySelector(selector);
+            var dotId = val.moduleId;
+            var dot = document.querySelector('.nav-dot[data-module-id="' + dotId + '"]');
             if (dot) dot.classList.add('has-selection');
         });
         updateNavDotActive();
@@ -1078,18 +935,6 @@
 
     // ===== Category Color Mapping =====
     function getDimCategoryClass(dimId) {
-        if (state.mode === 'analysis') {
-            // This function is only called in rendering mode now
-            // Analysis mode uses getModuleSectionClass
-            return '';
-        }
-        // Rendering mode
-        if (dimId === 1 || dimId === 2) return 'dot-cat-structure dim-cat-structure';
-        if (dimId === 3 || dimId === 5 || dimId === 6 || dimId === 7 || dimId === 13) return 'dot-cat-style dim-cat-style';
-        if (dimId === 4) return 'dot-cat-material dim-cat-material';
-        if (dimId === 8 || dimId === 9 || dimId === 12) return 'dot-cat-environment dim-cat-environment';
-        if (dimId === 10) return 'dot-cat-tech dim-cat-tech';
-        if (dimId === 11 || dimId === 14 || dimId === 15) return 'dot-cat-interior dim-cat-interior';
         return '';
     }
 
@@ -1137,11 +982,10 @@
                 });
             });
         } else {
-            state.data.forEach(function(dim) {
+            state.data.forEach(function(mod) {
                 state.selected.forEach(function(val) {
-                    if (val.dimId !== dim.id) return;
-                    if (dim.id === 10 && val.item.label === 'SD负面固定包') return;
-                    list.push({ role: dim.role, en: val.item.en, cn: val.item.cn });
+                    if (val.moduleId !== mod.id) return;
+                    list.push({ role: val.role, en: val.item.en, cn: val.item.cn || val.item.label });
                 });
             });
         }
@@ -1211,28 +1055,41 @@
         'output_canvas': 'Canvas',
         'output_composition': 'Composition',
         'output_editability': 'Editability',
-        'output_consistency': 'Visual Consistency'
-    };
-    var RENDER_DIM_EN = {
-        1: 'Building Typology / Medical Function Module',
-        2: 'Space Type (Interior/Exterior)',
-        3: 'Architectural Style / Design Language',
-        4: 'Facade / Skin Material',
-        5: 'Color Scheme',
-        6: 'Light / Time',
-        7: 'Viewpoint / Camera',
-        8: 'Environment / Context',
-        9: 'Atmosphere / Mood',
-        10: 'Common Suffix / Render Params',
-        11: 'Medical Furniture / Equipment',
-        12: 'Natural Elements / Landscape',
-        13: 'Layout / Massing Form',
-        14: 'Hospital Specialized Details',
-        15: 'Interior Lighting / Finish Details'
+        'output_consistency': 'Visual Consistency',
+        // 效果图模式新增角色
+        'constraint_light': 'Constraint Level (Light)',
+        'constraint_medium': 'Constraint Level (Medium)',
+        'constraint_high': 'Constraint Level (High)',
+        'subject': 'Building Typology',
+        'material': 'Material',
+        'style': 'Design Language',
+        'color': 'Color Palette',
+        'light': 'Lighting',
+        'weather': 'Weather & Atmosphere',
+        'view': 'Viewpoint / Camera',
+        'context': 'Context',
+        'mood': 'Mood',
+        'landscape': 'Landscape',
+        'quality': 'Image Quality'
     };
     function getModuleEn(id) { return MODULE_EN[id] || id; }
     function getCatEnRole(role) { return CATEGORY_EN[role] || role; }
-    function getDimEn(id) { return RENDER_DIM_EN[id] || String(id); }
+    var RENDER_MODULE_EN = {
+        '1': 'Constraint Type',
+        '2': 'Building Typology',
+        '3': 'Facade / Skin Material',
+        '4': 'Material & Texture',
+        '5': 'Design Language',
+        '6': 'Color Palette',
+        '7': 'Lighting',
+        '8': 'Weather & Atmosphere',
+        '9': 'Viewpoint / Camera',
+        '10': 'Context',
+        '11': 'Mood',
+        '12': 'Image Quality',
+        '13': 'Landscape'
+    };
+    function getRenderModuleEn(id) { return RENDER_MODULE_EN[id] || id; }
 
     function buildKeywordTree() {
         var lang = state.lang;
@@ -1278,23 +1135,35 @@
                 });
             });
         } else {
-            var dimCounter = 0;
-            state.data.forEach(function(dim) {
-                var dimSels = [];
+            var modCounter = 0;
+            state.data.forEach(function(mod) {
+                var modSels = [];
                 state.selected.forEach(function(val) {
-                    if (val.dimId !== dim.id) return;
-                    if (dim.id === 10 && val.item.label === 'SD负面固定包') return;
-                    dimSels.push(val);
+                    if (val.moduleId === mod.id) modSels.push(val);
                 });
-                if (!dimSels.length) return;
-                dimCounter++;
-                dimSels.sort(function(a, b) { return a.itemIdx - b.itemIdx; });
-                var dimNum = pad2(dimCounter);
-                var dimName = (lang === 'en') ? getDimEn(dim.id) : dim.title;
-                dimSels.forEach(function(val, i) {
+                if (!modSels.length) return;
+                modCounter++;
+                modSels.sort(function(a, b) { return (a.catIdx - b.catIdx) || (a.itemIdx - b.itemIdx); });
+                var modNum = pad2(modCounter);
+                var modName = (lang === 'en') ? getRenderModuleEn(mod.id) : mod.title;
+                var prevCat = null;
+                modSels.forEach(function(val, i) {
                     var txt = itemText(val.item, lang);
-                    if (i === 0) lines.push(dimNum + '-' + dimName + ':' + txt);
-                    else lines.push('-' + txt);
+                    var catName;
+                    if (lang === 'en') {
+                        var role = findModule(mod.id).categories[val.catIdx].role;
+                        catName = getCatEnRole(role);
+                    } else {
+                        catName = shortCatTitle(val.catTitle);
+                    }
+                    if (i === 0) {
+                        if (catName === modName) lines.push(modNum + '-' + modName + ':' + txt);
+                        else lines.push(modNum + '-' + modName + '-' + catName + ':' + txt);
+                    } else {
+                        if (catName === prevCat) lines.push('-' + txt);
+                        else lines.push('-' + catName + ':' + txt);
+                    }
+                    prevCat = catName;
                 });
             });
         }
@@ -1333,18 +1202,17 @@
         // 'both' mode - append Chinese
         if (state.lang === 'both' && state.mode === 'rendering' && state.format !== 'keyword') {
             var dimGroups = {};
-            state.data.forEach(function(dim) {
+            state.data.forEach(function(mod) {
                 state.selected.forEach(function(val) {
-                    if (val.dimId !== dim.id) return;
-                    if (!dimGroups[dim.id]) dimGroups[dim.id] = [];
-                    dimGroups[dim.id].push(val.item);
+                    if (val.moduleId !== mod.id) return;
+                    if (!dimGroups[mod.id]) dimGroups[mod.id] = [];
+                    dimGroups[mod.id].push(val.item);
                 });
             });
             var cnParts = [];
-            state.data.forEach(function(dim) {
-                if (!dimGroups[dim.id]) return;
-                dimGroups[dim.id].forEach(function(item) {
-                    if (dim.id === 10 && item.label === 'SD负面固定包') return;
+            state.data.forEach(function(mod) {
+                if (!dimGroups[mod.id]) return;
+                dimGroups[mod.id].forEach(function(item) {
                     if (item.cn) cnParts.push(item.cn);
                 });
             });
@@ -1484,38 +1352,20 @@
 
     // ===== Re-render Tags (for language switch) =====
     function reRenderTags() {
-        if (state.mode === 'analysis') {
-            state.data.forEach(function(mod) {
-                mod.categories.forEach(function(cat, catIdx) {
-                    var tagsContainer = document.querySelector('.dimension-tags[data-module-id="' + mod.id + '"][data-cat-idx="' + catIdx + '"]');
-                    if (!tagsContainer) return;
-
-                    cat.items.forEach(function(item, itemIdx) {
-                        var tagEl = tagsContainer.querySelector('.tag[data-item-idx="' + itemIdx + '"]');
-                        if (!tagEl) return;
-                        tagEl.innerHTML = buildTagContent(item);
-                        var key = mod.id + '::' + catIdx + '::' + itemIdx;
-                        var isSelected = state.selected.has(key);
-                        tagEl.setAttribute('aria-checked', isSelected ? 'true' : 'false');
-                        tagEl.setAttribute('tabindex', '0');
-                    });
-                });
-            });
-        } else {
-            state.data.forEach(function(dim) {
-                var tagsContainer = document.querySelector('.dimension-tags[data-dim-id="' + dim.id + '"]');
-                if (!tagsContainer) return;
-                dim.items.forEach(function(item, idx) {
-                    var tagEl = tagsContainer.querySelector('.tag[data-item-idx="' + idx + '"]');
-                    if (!tagEl) return;
-                    tagEl.innerHTML = buildTagContent(item);
-                    var key = dim.id + '-' + idx;
-                    var isSelected = state.selected.has(key);
-                    tagEl.setAttribute('aria-checked', isSelected ? 'true' : 'false');
-                    tagEl.setAttribute('tabindex', '0');
-                });
-            });
-        }
+        // 统一路径：无论向导模式还是完整面板，标签均带 data-module-id / data-cat-idx / data-item-idx
+        document.querySelectorAll('.tag[data-module-id]').forEach(function(tagEl) {
+            var moduleId = tagEl.dataset.moduleId;
+            var catIdx = parseInt(tagEl.dataset.catIdx, 10);
+            var itemIdx = parseInt(tagEl.dataset.itemIdx, 10);
+            var mod = findModule(moduleId);
+            if (!mod || !mod.categories[catIdx]) return;
+            var item = mod.categories[catIdx].items[itemIdx];
+            if (!item) return;
+            tagEl.innerHTML = buildTagContent(item);
+            var key = moduleId + '::' + catIdx + '::' + itemIdx;
+            tagEl.setAttribute('aria-checked', state.selected.has(key) ? 'true' : 'false');
+            tagEl.setAttribute('tabindex', '0');
+        });
     }
 
     // ===== Mode Switch =====
@@ -1922,7 +1772,7 @@
     }
 
     function buildAnalysisPrompt() {
-        return 'Analyze this architectural image of a hospital / medical facility and extract AI image generation keywords.\n\nIdentify the most relevant English keyword(s) for each dimension:\n\n1. Building type: outpatient clinic, emergency department, inpatient tower, operating theatre, ICU, etc.\n2. Space type: entrance lobby, waiting area, corridor, patient room, nursing station, operating room, etc.\n3. Architectural style: modern minimalist, parametric, neo-brutalist, high-tech, biomorphic, sustainable, etc.\n4. Facade material: glass curtain wall, aluminum panel, terracotta, concrete, stone, wood, etc.\n5. Color scheme: pure white, warm white, wood tones, earth tones, blue, green, grey, accent, etc.\n6. Lighting: golden hour, morning light, noon, blue hour, overcast, warm interior, cool clinical, etc.\n7. Camera angle: eye-level, low-angle, birds-eye, wide-angle, telephoto, axonometric, etc.\n8. Environment: dense urban, suburban, waterfront, hillside, forest, campus, etc.\n9. Mood: warm cozy, clinical precise, serene, vibrant, solemn, futuristic, biophilic, etc.\n11. Medical furniture: hospital bed, IV pole, patient monitor, nursing desk, surgical light, wheelchair, etc.\n12. Landscape: healing garden, living wall, water feature, tree canopy, green roof, bamboo, etc.\n13. Layout/massing: podium-and-block, high-rise tower, courtyard cluster, etc.\n14. Hospital-specific details: accessible ramp, color-coded wayfinding, digital kiosk, etc.\n15. Interior lighting/finishes: indirect cove lighting, linear LED strip, perforated acoustic ceiling, etc.\n\nAlso generate a complete English prompt sentence for Midjourney / Stable Diffusion.\n\nReturn a JSON object only, no markdown, no explanation:\n{"dimensions":{"1":["keyword"],"2":["keyword"],...},"full_prompt":"complete English prompt","description":"中文描述"}';
+        return 'Analyze this architectural image of a hospital / medical facility and extract AI image generation keywords.\n\nIdentify the most relevant English keyword(s) for each dimension. Use these dimension numbers and meanings:\n\n1. Constraint type: keep geometry, keep proportions, geometry lock, etc.\n2. Building typology: general hospital, specialty hospital, medical campus, clinic, etc.\n3. Facade / skin material: glass curtain wall, double-skin facade, perforated aluminum, vertical fins, etc.\n4. Material & texture: exposed concrete, terracotta, timber, corten steel, GRC, etc.\n5. Design language / style: modern minimalist, parametric, neo-brutalist, high-tech, biomorphic, sustainable, etc.\n6. Color palette: pure white, warm white, wood tones, earth tones, blue, green, grey, accent, etc.\n7. Lighting: golden hour, morning light, noon, blue hour, overcast, warm interior, cool clinical, etc.\n8. Weather & atmosphere: clear sky, cloudy, rainy, foggy, snowy, autumn, etc.\n9. Viewpoint / camera: eye-level, low-angle, birds-eye, wide-angle, telephoto, axonometric, focal length, etc.\n10. Context / environment: dense urban, suburban, waterfront, hillside, forest, campus, etc.\n11. Mood: warm cozy, clinical precise, serene, vibrant, solemn, futuristic, biophilic, etc.\n12. Image quality: 8K, photorealistic, ultra-detailed, cinematic, architectural photography, etc.\n13. Landscape: healing garden, living wall, water feature, tree canopy, green roof, bamboo, etc.\n\nAlso generate a complete English prompt sentence for Midjourney / Stable Diffusion.\n\nReturn a JSON object only, no markdown, no explanation:\n{"dimensions":{"1":["keyword"],"2":["keyword"],...},"full_prompt":"complete English prompt","description":"中文描述"}';
     }
 
     function parseAnalysisResult(content) {
@@ -1951,52 +1801,28 @@
     function matchKeywordsToVocabulary(dimensions) {
         var matches = [];
 
+        // 两种模式数据结构已统一（模块 → 类别 → 词条），直接跨全部模块/类别按关键词匹配
         Object.keys(dimensions).forEach(function(dimIdStr) {
-            var dimIdNum = parseInt(dimIdStr);
             var keywords = dimensions[dimIdStr];
             if (!Array.isArray(keywords)) keywords = [keywords];
 
-            // In rendering mode: match against flat PROMPT_DATA
-            if (state.mode === 'rendering') {
-                var dim = state.data.find(function(d) { return d.id === dimIdNum; });
-                if (!dim) return;
-                keywords.forEach(function(keyword) {
-                    findMatchesInItems(dim.items, dimIdNum, dim.title, keyword, matches);
-                });
-            }
-            // In analysis mode: search across all modules and categories
-            else {
-                state.data.forEach(function(mod) {
-                    mod.categories.forEach(function(cat, catIdx) {
-                        // Try to match role-based if the dimId matches existing role pattern
-                        keywords.forEach(function(keyword) {
-                            findMatchesWithMeta(cat.items, mod.id, catIdx, cat.role, mod.title, cat.title, keyword, matches);
-                        });
+            state.data.forEach(function(mod) {
+                mod.categories.forEach(function(cat, catIdx) {
+                    keywords.forEach(function(keyword) {
+                        findMatchesWithMeta(cat.items, mod.id, catIdx, cat.role, mod.title, cat.title, keyword, matches);
                     });
                 });
-            }
+            });
         });
 
-        // Deduplicate
+        // Deduplicate by moduleId::catIdx::itemIdx
         var deduped = {};
         matches.forEach(function(m) {
-            var key = (state.mode === 'analysis')
-                ? m.moduleId + '::' + m.catIdx + '::' + m.itemIdx
-                : m.dimId + '-' + m.itemIdx;
+            var key = m.moduleId + '::' + m.catIdx + '::' + m.itemIdx;
             if (!deduped[key] || deduped[key].score < m.score) deduped[key] = m;
         });
 
         return Object.values(deduped);
-    }
-
-    function findMatchesInItems(items, dimId, dimTitle, keyword, matches) {
-        var kwLower = keyword.toLowerCase();
-        items.forEach(function(item, idx) {
-            var matchScore = calcMatchScore(item, kwLower);
-            if (matchScore > 0) {
-                matches.push({ dimId: dimId, itemIdx: idx, keyword: keyword, label: item.label, en: item.en, score: matchScore, dimTitle: dimTitle });
-            }
-        });
     }
 
     function findMatchesWithMeta(items, moduleId, catIdx, role, moduleTitle, catTitle, keyword, matches) {
@@ -2048,15 +1874,14 @@
         if (result.dimensions && Object.keys(result.dimensions).length > 0 && state.mode === 'rendering') {
             html += '<div class="result-card"><div class="result-card-label">维度分析</div><div class="dimension-breakdown">';
             Object.keys(result.dimensions).forEach(function(dimIdStr) {
-                var dimIdNum = parseInt(dimIdStr);
-                var dim = state.data.find(function(d) { return d.id === dimIdNum; });
+                var dim = state.data.find(function(d) { return d.id === dimIdStr; });
                 if (!dim) return;
                 var keywords = result.dimensions[dimIdStr];
                 if (!Array.isArray(keywords)) keywords = [keywords];
-                var hasMatch = imageAnalysis.matchedTags.some(function(m) { return m.dimId === dimIdNum; });
-                html += '<div class="breakdown-item ' + (hasMatch ? 'has-match' : '') + '"><span class="breakdown-dim-num">' + dimIdNum + '</span><div class="breakdown-content"><div class="breakdown-dim-title">' + dim.title + '</div><div class="breakdown-keywords">';
+                var hasMatch = imageAnalysis.matchedTags.some(function(m) { return m.moduleId === dimIdStr; });
+                html += '<div class="breakdown-item ' + (hasMatch ? 'has-match' : '') + '"><span class="breakdown-dim-num">' + dimIdStr + '</span><div class="breakdown-content"><div class="breakdown-dim-title">' + dim.title + '</div><div class="breakdown-keywords">';
                 keywords.forEach(function(kw) {
-                    var isMatched = imageAnalysis.matchedTags.some(function(m) { return m.dimId === dimIdNum && m.keyword.toLowerCase() === kw.toLowerCase(); });
+                    var isMatched = imageAnalysis.matchedTags.some(function(m) { return m.moduleId === dimIdStr && m.keyword.toLowerCase() === kw.toLowerCase(); });
                     html += '<span class="breakdown-keyword ' + (isMatched ? 'matched' : '') + '">' + escapeHtml(kw) + '</span>';
                 });
                 html += '</div></div></div>';
@@ -2067,7 +1892,7 @@
         if (imageAnalysis.matchedTags.length > 0) {
             html += '<div class="result-card" style="background:var(--accent-bg);border-color:var(--accent-light);"><div class="result-card-label" style="color:var(--accent);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>已匹配词库 (' + imageAnalysis.matchedTags.length + ' 项)</div><div class="breakdown-keywords">';
             imageAnalysis.matchedTags.forEach(function(m) {
-                var badge = state.mode === 'analysis' ? m.moduleId : 'D' + m.dimId;
+                var badge = m.moduleId;
                 html += '<span class="breakdown-keyword matched" style="background:var(--accent);color:white;border-color:var(--accent);">' + badge + ' ' + escapeHtml(m.label) + '</span>';
             });
             html += '</div></div>';
@@ -2084,44 +1909,19 @@
         var appliedCount = 0;
 
         imageAnalysis.matchedTags.forEach(function(match) {
-            var key;
-            if (state.mode === 'analysis') {
-                key = match.moduleId + '::' + match.catIdx + '::' + match.itemIdx;
-            } else {
-                key = match.dimId + '-' + match.itemIdx;
-            }
-
-            if (state.mode === 'rendering' && match.dimId === 10) {
-                state.selected.forEach(function(val, k) {
-                    if (k.startsWith('10-')) {
-                        state.selected.delete(k);
-                        var existingTag = document.querySelector('.tag[data-key="' + k + '"]');
-                        if (existingTag) existingTag.classList.remove('selected');
-                    }
-                });
-            }
+            var key = match.moduleId + '::' + match.catIdx + '::' + match.itemIdx;
 
             if (!state.selected.has(key)) {
-                if (state.mode === 'analysis') {
-                    var mod = findModule(match.moduleId);
-                    if (mod && mod.categories[match.catIdx] && mod.categories[match.catIdx].items[match.itemIdx]) {
-                        state.selected.set(key, {
-                            moduleId: match.moduleId, catIdx: match.catIdx, itemIdx: match.itemIdx,
-                            item: mod.categories[match.catIdx].items[match.itemIdx],
-                            role: match.role, moduleTitle: match.moduleTitle, catTitle: match.catTitle
-                        });
-                        var tagEl = document.querySelector('.tag[data-key="' + key + '"]');
-                        if (tagEl) tagEl.classList.add('selected');
-                        appliedCount++;
-                    }
-                } else {
-                    var dim = state.data.find(function(d) { return d.id === match.dimId; });
-                    if (dim && dim.items[match.itemIdx]) {
-                        state.selected.set(key, { dimId: match.dimId, itemIdx: match.itemIdx, item: dim.items[match.itemIdx], dimTitle: dim.title });
-                        var tagEl = document.querySelector('.tag[data-key="' + key + '"]');
-                        if (tagEl) tagEl.classList.add('selected');
-                        appliedCount++;
-                    }
+                var mod = findModule(match.moduleId);
+                if (mod && mod.categories[match.catIdx] && mod.categories[match.catIdx].items[match.itemIdx]) {
+                    state.selected.set(key, {
+                        moduleId: match.moduleId, catIdx: match.catIdx, itemIdx: match.itemIdx,
+                        item: mod.categories[match.catIdx].items[match.itemIdx],
+                        role: match.role, moduleTitle: match.moduleTitle, catTitle: match.catTitle
+                    });
+                    var tagEl = document.querySelector('.tag[data-key="' + key + '"]');
+                    if (tagEl) tagEl.classList.add('selected');
+                    appliedCount++;
                 }
             }
         });

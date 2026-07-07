@@ -12,10 +12,11 @@
 }(typeof window !== 'undefined' ? window : this, function () {
     'use strict';
 
-    var ROLE_ORDER = [
-        'view', 'style', 'subject', 'space', 'layout',
-        'material', 'color', 'light', 'interior',
-        'context', 'mood', 'detail', 'furniture', 'landscape'
+    // Rendering-mode role order (matches the 13-dimension 效果图 taxonomy)
+    var RENDER_ROLE_ORDER = [
+        'constraint_light', 'constraint_medium', 'constraint_high',
+        'subject', 'material', 'style', 'color', 'light', 'weather',
+        'view', 'context', 'mood', 'landscape', 'quality'
     ];
 
     function isRenderFlag(en) {
@@ -113,30 +114,25 @@
         return out.join(' ');
     }
 
-    function buildSentenceEN(selections) {
+    function buildRenderSentenceEN(selections) {
         var groups = groupByRole(selections, 'en');
-
-        var subjectPhrase = composeSubjectPhrase(
-            lcArr(groups.style),
-            lcArr(groups.subject),
-            lcArr(groups.space)
-        );
-
         var parts = [];
-        var viewArr = lcArr(groups.view);
+
+        var subjectArr = groups.subject || [];
+        var subjectPhrase = subjectArr.length ? joinAnd(subjectArr) : 'hospital building';
+
+        var viewArr = groups.view || [];
         if (viewArr.length) {
-            var viewPhrase = joinAnd(viewArr);
-            parts.push(capitalize(article(viewPhrase)) + ' ' + viewPhrase + ' render of ' + subjectPhrase);
+            parts.push(capitalize(joinAnd(viewArr)) + ' rendering of ' + article(subjectPhrase) + ' ' + subjectPhrase);
         } else {
-            parts.push(capitalize(subjectPhrase));
+            parts.push(capitalize(article(subjectPhrase)) + ' ' + subjectPhrase);
         }
 
-        if (groups.layout && groups.layout.length) {
-            var layoutPhrase = joinAnd(lcArr(groups.layout));
-            parts.push('organized as ' + article(layoutPhrase) + ' ' + layoutPhrase + ' configuration');
-        }
         if (groups.material && groups.material.length) {
             parts.push('clad in ' + joinAnd(lcArr(groups.material)));
+        }
+        if (groups.style && groups.style.length) {
+            parts.push('in ' + joinAnd(lcArr(groups.style)) + ' design language');
         }
         if (groups.color && groups.color.length) {
             var colorPhrase = joinAnd(lcArr(groups.color));
@@ -145,8 +141,8 @@
         if (groups.light && groups.light.length) {
             parts.push('illuminated by ' + joinAnd(lcArr(groups.light)));
         }
-        if (groups.interior && groups.interior.length) {
-            parts.push('with ' + joinAnd(lcArr(groups.interior)));
+        if (groups.weather && groups.weather.length) {
+            parts.push('with ' + joinAnd(lcArr(groups.weather)) + ' atmosphere');
         }
         if (groups.context && groups.context.length) {
             var contextPhrase = joinAnd(lcArr(groups.context));
@@ -156,22 +152,22 @@
             var moodPhrase = joinAnd(lcArr(groups.mood));
             parts.push('evoking ' + article(moodPhrase) + ' ' + moodPhrase + ' atmosphere');
         }
-        if (groups.detail && groups.detail.length) {
-            parts.push('with attention to ' + joinAnd(lcArr(groups.detail)));
-        }
-        if (groups.furniture && groups.furniture.length) {
-            parts.push('furnished with ' + joinAnd(lcArr(groups.furniture)));
-        }
         if (groups.landscape && groups.landscape.length) {
             parts.push('surrounded by ' + joinAnd(lcArr(groups.landscape)));
         }
-
-        var sentence = parts.join(', ') + '.';
-        var renderSuffix = buildRenderSuffix(groups.render_param);
-        if (renderSuffix) {
-            sentence += ' ' + renderSuffix;
+        if (groups.quality && groups.quality.length) {
+            parts.push('rendered at ' + joinAnd(lcArr(groups.quality)));
         }
-        return sentence;
+
+        var constraintArr = []
+            .concat(groups.constraint_light || [])
+            .concat(groups.constraint_medium || [])
+            .concat(groups.constraint_high || []);
+        if (constraintArr.length) {
+            parts.push('Constraints: ' + joinAnd(lcArr(constraintArr)));
+        }
+
+        return parts.join(', ') + '.';
     }
 
     // ===== Rendering: Chinese sentence =====
@@ -214,80 +210,54 @@
         return out.join(' ');
     }
 
-    function buildSentenceCN(selections) {
+    function buildRenderSentenceCN(selections) {
         var groups = groupByRole(selections, 'cn');
-
-        var subjectPhrase = composeSubjectPhraseCN(
-            groups.style || [],
-            groups.subject || [],
-            groups.space || []
-        );
-
         var parts = [];
+
+        var subjectArr = groups.subject || [];
+        var subjectPhrase = subjectArr.length ? joinCN(subjectArr) : '一座医院建筑';
+
         var viewArr = groups.view || [];
         if (viewArr.length) {
-            parts.push(joinCN(viewArr) + '的' + subjectPhrase + '渲染图');
+            parts.push(joinCN(viewArr) + '视角的' + subjectPhrase + '渲染图');
         } else {
             parts.push(subjectPhrase);
         }
 
-        if (groups.layout && groups.layout.length) {
-            parts.push('采用' + joinCN(groups.layout) + '布局');
-        }
-        if (groups.material && groups.material.length) {
-            parts.push(joinCN(groups.material) + '饰面');
-        }
-        if (groups.color && groups.color.length) {
-            parts.push(joinCN(groups.color) + '色调');
-        }
-        if (groups.light && groups.light.length) {
-            parts.push(joinCN(groups.light) + '照明');
-        }
-        if (groups.interior && groups.interior.length) {
-            parts.push('室内配置' + joinCN(groups.interior));
-        }
-        if (groups.context && groups.context.length) {
-            parts.push('位于' + joinCN(groups.context) + '环境');
-        }
-        if (groups.mood && groups.mood.length) {
-            parts.push('营造' + joinCN(groups.mood) + '氛围');
-        }
-        if (groups.detail && groups.detail.length) {
-            parts.push('注重' + joinCN(groups.detail));
-        }
-        if (groups.furniture && groups.furniture.length) {
-            parts.push('配备' + joinCN(groups.furniture));
-        }
-        if (groups.landscape && groups.landscape.length) {
-            parts.push('环绕' + joinCN(groups.landscape));
-        }
+        if (groups.material && groups.material.length) parts.push(joinCN(groups.material) + '饰面');
+        if (groups.style && groups.style.length) parts.push(joinCN(groups.style) + '设计语言');
+        if (groups.color && groups.color.length) parts.push(joinCN(groups.color) + '色调');
+        if (groups.light && groups.light.length) parts.push(joinCN(groups.light) + '照明');
+        if (groups.weather && groups.weather.length) parts.push(joinCN(groups.weather));
+        if (groups.context && groups.context.length) parts.push('位于' + joinCN(groups.context));
+        if (groups.mood && groups.mood.length) parts.push('营造' + joinCN(groups.mood) + '氛围');
+        if (groups.landscape && groups.landscape.length) parts.push('环绕' + joinCN(groups.landscape));
+        if (groups.quality && groups.quality.length) parts.push(joinCN(groups.quality));
 
-        var sentence = parts.join('，') + '。';
-        var renderSuffix = buildRenderSuffixCN(groups.render_param);
-        if (renderSuffix) {
-            sentence += ' ' + renderSuffix;
-        }
-        return sentence;
+        var constraintArr = []
+            .concat(groups.constraint_light || [])
+            .concat(groups.constraint_medium || [])
+            .concat(groups.constraint_high || []);
+        if (constraintArr.length) parts.push('约束：' + joinCN(constraintArr));
+
+        return parts.join('，') + '。';
     }
 
     function buildSentence(selections, lang) {
-        if (lang === 'cn') return buildSentenceCN(selections);
-        return buildSentenceEN(selections);
+        if (lang === 'cn') return buildRenderSentenceCN(selections);
+        return buildRenderSentenceEN(selections);
     }
 
     function buildKeywordPhrase(selections, lang) {
         lang = lang === 'cn' ? 'cn' : 'en';
         var groups = groupByRole(selections, lang);
         var parts = [];
-        ROLE_ORDER.forEach(function (role) {
+        RENDER_ROLE_ORDER.forEach(function (role) {
             if (groups[role] && groups[role].length) {
                 groups[role].forEach(function (text) {
                     parts.push(text);
                 });
             }
-        });
-        (groups.render_param || []).forEach(function (it) {
-            parts.push(lang === 'cn' ? (it.cn || it.en) : it.en);
         });
         return parts.join(', ');
     }

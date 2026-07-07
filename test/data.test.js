@@ -4,59 +4,88 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const PROMPT_DATA = require('../data.js');
 
-const EXPECTED_ROLES = {
-  1: 'subject',
-  2: 'space',
-  3: 'style',
-  4: 'material',
-  5: 'color',
-  6: 'light',
-  7: 'view',
-  8: 'context',
-  9: 'mood',
-  10: 'render_param',
-  11: 'furniture',
-  12: 'landscape'
+// 预期每个模块的类别角色（与 prompt-engine RENDER_ROLE_ORDER 对应）
+const EXPECTED_MODULE_ROLES = {
+  '1': ['constraint_light', 'constraint_medium', 'constraint_high'],
+  '2': ['subject'],
+  '3': ['material'],
+  '4': ['material'],
+  '5': ['style'],
+  '6': ['color'],
+  '7': ['light'],
+  '8': ['weather'],
+  '9': ['view'],
+  '10': ['context'],
+  '11': ['mood'],
+  '12': ['quality'],
+  '13': ['landscape']
 };
 
-test('data.js 可通过 require 加载为数组', () => {
+const ALL_ROLES = new Set(Object.values(EXPECTED_MODULE_ROLES).flat());
+
+test('data.js 可通过 require 加载为数组，共 13 个模块', () => {
   assert.equal(Array.isArray(PROMPT_DATA), true);
-  assert.equal(PROMPT_DATA.length >= 12, true);
+  assert.equal(PROMPT_DATA.length, 13);
 });
 
-test('现有 12 个维度都带有正确的 role 字段', () => {
-  Object.keys(EXPECTED_ROLES).forEach(function (idStr) {
-    const id = Number(idStr);
-    const dim = PROMPT_DATA.find(function (d) { return d.id === id; });
-    assert.ok(dim, 'dimension id ' + id + ' should exist');
-    assert.equal(dim.role, EXPECTED_ROLES[id], 'dimension ' + id + ' role mismatch');
+test('每个模块含 id/title/desc/categories 字段，categories 非空', () => {
+  PROMPT_DATA.forEach(function (mod) {
+    assert.equal(typeof mod.id, 'string');
+    assert.equal(typeof mod.title, 'string');
+    assert.equal(typeof mod.desc, 'string');
+    assert.ok(Array.isArray(mod.categories) && mod.categories.length > 0, 'module ' + mod.id + ' should have non-empty categories');
   });
 });
 
-test('每个维度的 items 仍然保留 label/en 字段', () => {
-  PROMPT_DATA.forEach(function (dim) {
-    assert.ok(Array.isArray(dim.items) && dim.items.length > 0, 'dimension ' + dim.id + ' items should be non-empty array');
-    dim.items.forEach(function (item) {
-      assert.equal(typeof item.label, 'string');
-      assert.equal(typeof item.en, 'string');
+test('每个模块的类别角色与预期一致', () => {
+  Object.keys(EXPECTED_MODULE_ROLES).forEach(function (id) {
+    const mod = PROMPT_DATA.find(function (m) { return m.id === id; });
+    assert.ok(mod, 'module ' + id + ' should exist');
+    const roles = mod.categories.map(function (c) { return c.role; });
+    assert.deepEqual(roles, EXPECTED_MODULE_ROLES[id], 'module ' + id + ' category roles mismatch');
+  });
+});
+
+test('所有类别角色都在合法角色集合内', () => {
+  PROMPT_DATA.forEach(function (mod) {
+    mod.categories.forEach(function (cat) {
+      assert.ok(ALL_ROLES.has(cat.role), 'unknown role ' + cat.role + ' in module ' + mod.id);
     });
   });
 });
 
-test('新增维度13/14/15存在且role正确，每个至少15条', () => {
-  const NEW_DIMS = { 13: 'layout', 14: 'detail', 15: 'interior' };
-  Object.keys(NEW_DIMS).forEach(function (idStr) {
-    const id = Number(idStr);
-    const dim = PROMPT_DATA.find(function (d) { return d.id === id; });
-    assert.ok(dim, 'dimension id ' + id + ' should exist');
-    assert.equal(dim.role, NEW_DIMS[id]);
-    assert.equal(dim.items.length >= 15, true, 'dimension ' + id + ' should have at least 15 items');
+test('每个类别含 title/role/items，且 items 非空、字段完整', () => {
+  PROMPT_DATA.forEach(function (mod) {
+    mod.categories.forEach(function (cat) {
+      assert.equal(typeof cat.title, 'string');
+      assert.equal(typeof cat.role, 'string');
+      assert.ok(Array.isArray(cat.items) && cat.items.length > 0, 'category in module ' + mod.id + ' should have non-empty items');
+      cat.items.forEach(function (item) {
+        assert.equal(typeof item.label, 'string');
+        assert.equal(typeof item.en, 'string');
+        if (item.cn !== undefined) assert.equal(typeof item.cn, 'string');
+      });
+    });
   });
 });
 
-test('维度1(建筑主体)条目数不少于24，维度9(氛围情绪)条目数不少于12', () => {
-  const dim1 = PROMPT_DATA.find(function (d) { return d.id === 1; });
-  const dim9 = PROMPT_DATA.find(function (d) { return d.id === 9; });
-  assert.equal(dim1.items.length >= 24, true, 'dimension 1 should have at least 24 items, got ' + dim1.items.length);
-  assert.equal(dim9.items.length >= 12, true, 'dimension 9 should have at least 12 items, got ' + dim9.items.length);
+test('模块1(约束类型)包含 轻度/中度/高度 三个类别', () => {
+  const mod1 = PROMPT_DATA.find(function (m) { return m.id === '1'; });
+  assert.equal(mod1.categories.length, 3);
+  assert.deepEqual(mod1.categories.map(function (c) { return c.title; }), ['轻度', '中度', '高度']);
+});
+
+test('模块9(视角/镜头)词条带 extra(焦距) 字段', () => {
+  const mod9 = PROMPT_DATA.find(function (m) { return m.id === '9'; });
+  assert.ok(mod9, 'module 9 should exist');
+  const withExtra = mod9.categories[0].items.filter(function (it) { return it.extra; });
+  assert.ok(withExtra.length > 0, 'module 9 should have items with extra (焦距) field');
+});
+
+test('总词条数不少于 200', () => {
+  let total = 0;
+  PROMPT_DATA.forEach(function (mod) {
+    mod.categories.forEach(function (cat) { total += cat.items.length; });
+  });
+  assert.ok(total >= 200, 'total items ' + total + ' should be >= 200');
 });
