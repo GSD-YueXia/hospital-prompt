@@ -1,6 +1,9 @@
 /**
  * 医院建筑 AI 提示词生成器
  * 核心逻辑：点击维度标签 → 自动组合生成完整 AI 提示词
+ * 效果图模式：三级嵌套结构 data.js（模块1-13 → 类别 → 词条）
+ * 分析图模式：三级嵌套结构 analysis-data.js（模块1-8 → 类别 → 词条）
+ * 两种模式共用「模块 → 类别 → 词条」模型与向导式 UI
  */
 
 (function() {
@@ -8,11 +11,18 @@
 
     // ===== State =====
     const state = {
-        selected: new Map(), // key: "dimId-itemIdx" => item object
+        selected: new Map(), // key: "moduleId::catIdx::itemIdx"（效果图与分析图共用）
         lang: 'en',          // 'en' | 'cn' | 'both'
         format: 'sentence',  // 'sentence' | 'keyword'
         mode: 'rendering',   // 'rendering' | 'analysis'
-        data: PROMPT_DATA    // from data.js (rendering) or ANALYSIS_PROMPT_DATA (analysis)
+        data: PROMPT_DATA,   // from data.js (rendering) or ANALYSIS_PROMPT_DATA (analysis)
+        currentStep: 0,      // wizard: current step index
+        steps: [],           // wizard: flattened categories
+        custom: {            // wizard: custom control values
+            buildingName: '',
+            palette: [],
+            refImage: null
+        }
     };
 
     // ===== DOM Refs =====
@@ -32,9 +42,524 @@
         updatePrompt();
     }
 
-    // ===== Render Dimensions =====
+    // ===== Render Dimensions (Wizard) =====
     function renderDimensions() {
-        var html = '<div class="search-bar">' +
+        renderWizard();
+    }
+
+    // ---------------------------------------------------------------
+    // 步骤向导：把数据扁平为「大类」步骤，每次只显示当前步
+    // ---------------------------------------------------------------
+    function buildSteps() {
+        state.steps = [];
+        if (state.mode === 'analysis') {
+            state.data.forEach(function(mod) {
+                // 按模块聚合：每个模块 = 一步（M00-M07 共 8 步），步内再按类别分组
+                var allItems = [];
+                mod.categories.forEach(function(cat, catIdx) {
+                    cat.items.forEach(function(item, itemIdx) {
+                        allItems.push({ item: item, catIdx: catIdx, itemIdx: itemIdx, catTitle: cat.title });
+                    });
+                });
+                state.steps.push({
+                    moduleId: mod.id,
+                    moduleTitle: mod.title,
+                    isModule: true,
+                    catIdx: -1,
+                    catTitle: mod.title,
+                    role: null,
+                    items: allItems,
+                    custom: (mod.id === '1') ? 'reference' : null
+                });
+            });
+        } else {
+            // 效果图模式：数据结构与分析图一致（模块 → 类别 → 词条）
+            state.data.forEach(function(mod) {
+                var allItems = [];
+                mod.categories.forEach(function(cat, catIdx) {
+                    cat.items.forEach(function(item, itemIdx) {
+                        allItems.push({ item: item, catIdx: catIdx, itemIdx: itemIdx, catTitle: cat.title });
+                    });
+                });
+                state.steps.push({
+                    moduleId: mod.id,
+                    moduleTitle: mod.title,
+                    isModule: true,
+                    catIdx: -1,
+                    catTitle: mod.title,
+                    role: null,
+                    items: allItems,
+                    custom: null
+                });
+            });
+        }
+    }
+
+    function renderWizard() {
+        buildSteps();
+        state.currentStep = 0;
+        dimensionsPanel.innerHTML =
+            '<div class="wizard">' +
+                '<div class="wizard-stepbar" id="wizardStepbar"></div>' +
+                '<div class="wizard-content" id="wizardContent"></div>' +
+                '<div class="wizard-nav">' +
+                    '<button class="btn-wizard-nav btn-wizard-prev" id="btnWizardPrev">' +
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>上一步' +
+                    '</button>' +
+                    '<div class="wizard-nav-center">' +
+                        '<div class="wizard-progress-text" id="wizardProgressText"></div>' +
+                        '<div class="wizard-progress-bar"><div class="wizard-progress-fill" id="wizardProgressFill"></div></div>' +
+                    '</div>' +
+                    '<button class="btn-wizard-nav btn-wizard-next" id="btnWizardNext">下一步' +
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
+        bindWizardNav();
+        renderWizardStepbar();
+        renderWizardContent();
+    }
+
+    function bindWizardNav() {
+        var prev = document.getElementById('btnWizardPrev');
+        var next = document.getElementById('btnWizardNext');
+        if (prev) prev.addEventListener('click', prevStep);
+        if (next) next.addEventListener('click', nextStep);
+    }
+
+    function goToStep(idx) {
+        if (idx < 0 || idx >= state.steps.length) return;
+        state.currentStep = idx;
+        renderWizardStepbar();
+        renderWizardContent();
+    }
+
+    function nextStep() {
+        if (state.currentStep < state.steps.length - 1) {
+            goToStep(state.currentStep + 1);
+        } else {
+            // 最后一步：生成 / 复制提示词
+            var text = promptText.textContent.trim();
+            if (text && !text.startsWith('选择提示词后')) {
+                copyToClipboard(text);
+            } else {
+                showToast('请先选择提示词');
+            }
+        }
+    }
+
+    function prevStep() {
+        if (state.currentStep > 0) goToStep(state.currentStep - 1);
+    }
+
+    function getStepDotClass(step) {
+        return getModuleDotClass(step.moduleId);
+    }
+
+    function renderWizardStepbar() {
+        var bar = document.getElementById('wizardStepbar');
+        if (!bar) return;
+        var html = '';
+        state.steps.forEach(function(step, i) {
+            html += '<button class="wizard-dot ' + getStepDotClass(step) + '" data-step="' + i + '" title="' + escapeHtml(shortCatTitle(step.catTitle)) + '" tabindex="0" aria-label="步骤 ' + (i + 1) + ' ' + escapeHtml(shortCatTitle(step.catTitle)) + '">' + (i + 1) + '</button>';
+        });
+        bar.innerHTML = html;
+        bar.querySelectorAll('.wizard-dot').forEach(function(d) {
+            d.addEventListener('click', function() { goToStep(parseInt(this.dataset.step, 10)); });
+        });
+        updateWizardStepbar();
+    }
+
+    function stepHasSelection(i) {
+        var step = state.steps[i];
+        if (!step) return false;
+        var found = false;
+        state.selected.forEach(function(val) {
+            if (state.mode === 'analysis') {
+                if (step.isModule) {
+                    if (val.moduleId === step.moduleId) found = true;
+                } else if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) found = true;
+            } else {
+                if (val.moduleId === step.moduleId) found = true;
+            }
+        });
+        return found;
+    }
+
+    function updateWizardStepbar() {
+        var bar = document.getElementById('wizardStepbar');
+        if (!bar) return;
+        var total = state.steps.length;
+        bar.querySelectorAll('.wizard-dot').forEach(function(d) {
+            var i = parseInt(d.dataset.step, 10);
+            d.classList.remove('active', 'past', 'future', 'has-selection');
+            if (i < state.currentStep) d.classList.add('past');
+            else if (i === state.currentStep) d.classList.add('active');
+            else d.classList.add('future');
+            if (stepHasSelection(i)) d.classList.add('has-selection');
+        });
+        var cur = state.steps[state.currentStep];
+        var pt = document.getElementById('wizardProgressText');
+        if (pt && cur) pt.textContent = (state.currentStep + 1) + ' / ' + total + ' · ' + shortCatTitle(cur.catTitle);
+        var fill = document.getElementById('wizardProgressFill');
+        if (fill) fill.style.width = ((state.currentStep + 1) / total * 100) + '%';
+        // 导航按钮状态
+        var prev = document.getElementById('btnWizardPrev');
+        var next = document.getElementById('btnWizardNext');
+        if (prev) prev.disabled = (state.currentStep === 0);
+        if (next) {
+            if (state.currentStep === total - 1) {
+                next.innerHTML = '生成 / 复制<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>';
+            } else {
+                next.innerHTML = '下一步<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>';
+            }
+        }
+    }
+
+    function countStepSelections(i) {
+        var step = state.steps[i];
+        if (!step) return 0;
+        var n = 0;
+        state.selected.forEach(function(val) {
+            if (state.mode === 'analysis') {
+                if (step.isModule) {
+                    if (val.moduleId === step.moduleId) n++;
+                } else if (val.moduleId === step.moduleId && val.catIdx === step.catIdx) n++;
+            } else {
+                if (val.moduleId === step.moduleId) n++;
+            }
+        });
+        return n;
+    }
+
+    function updateStepCountHeader() {
+        var badge = document.querySelector('.wizard-step-sub');
+        if (!badge) return;
+        var step = state.steps[state.currentStep];
+        if (!step) return;
+        badge.textContent = countStepSelections(state.currentStep) + ' / ' + step.items.length + ' 已选';
+    }
+
+    function renderWizardContent() {
+        var content = document.getElementById('wizardContent');
+        if (!content) return;
+        var step = state.steps[state.currentStep];
+        if (!step) return;
+
+        var badge, headerClass, title;
+        badge = step.moduleId;
+        headerClass = getModuleSectionClass(step.moduleId);
+        title = shortCatTitle(step.catTitle);
+        var selCount = countStepSelections(state.currentStep);
+
+        var html = '<div class="wizard-step ' + headerClass + '">';
+        html += '<div class="wizard-step-header ' + headerClass + '">';
+        html += '<span class="wizard-step-badge">' + badge + '</span>';
+        html += '<div class="wizard-step-headtext">';
+        html += '<div class="wizard-step-title">' + escapeHtml(title) + '</div>';
+        html += '<div class="wizard-step-sub">' + selCount + ' / ' + step.items.length + ' 已选</div>';
+        html += '</div></div>';
+
+        html += '<div class="wizard-search"><svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" id="wizardSearch" placeholder="搜索本步词条（中英文）..." class="search-input"></div>';
+
+        html += buildCustomControl(step);
+
+        html += '<div class="wizard-tags" id="wizardTags">';
+        if (state.mode === 'analysis') {
+            var mod = findModule(step.moduleId);
+            if (mod) {
+                if (step.isModule) {
+                    // 模块级步骤：按类别分组渲染
+                    mod.categories.forEach(function(cat, catIdx) {
+                        html += '<div class="wizard-cat-group">';
+                        html += '<div class="wizard-cat-title">' + escapeHtml(shortCatTitle(cat.title)) + '</div>';
+                        html += '<div class="wizard-cat-tags">';
+                        cat.items.forEach(function(item, itemIdx) {
+                            html += renderAnalysisTag(mod, cat, item, catIdx, itemIdx);
+                        });
+                        html += '</div></div>';
+                    });
+                } else {
+                    mod.categories[step.catIdx].items.forEach(function(item, idx) {
+                        html += renderAnalysisTag(mod, mod.categories[step.catIdx], item, step.catIdx, idx);
+                    });
+                }
+            }
+        } else {
+            var rMod = findModule(step.moduleId);
+            if (rMod) {
+                rMod.categories.forEach(function(cat, catIdx) {
+                    html += '<div class="wizard-cat-group">';
+                    html += '<div class="wizard-cat-title">' + escapeHtml(shortCatTitle(cat.title)) + '</div>';
+                    html += '<div class="wizard-cat-tags">';
+                    cat.items.forEach(function(item, itemIdx) {
+                        html += renderAnalysisTag(rMod, cat, item, catIdx, itemIdx);
+                    });
+                    html += '</div></div>';
+                });
+            }
+        }
+        html += '</div></div>';
+
+        content.innerHTML = html;
+        bindWizardTagEvents();
+        bindWizardCustomEvents(step);
+
+        var ws = document.getElementById('wizardSearch');
+        if (ws) ws.addEventListener('input', function() { filterWizardTags(this.value); });
+    }
+
+    function bindWizardTagEvents() {
+        document.querySelectorAll('#wizardTags .tag').forEach(function(tag) {
+            tag.addEventListener('click', function(e) {
+                onWizardTagClick(this);
+            });
+            tag.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onWizardTagClick(this); }
+            });
+        });
+    }
+
+    function onWizardTagClick(tagEl) {
+        if (state.mode === 'analysis') {
+            var moduleId = tagEl.dataset.moduleId;
+            var catIdx = parseInt(tagEl.dataset.catIdx, 10);
+            var itemIdx = parseInt(tagEl.dataset.itemIdx, 10);
+            toggleAnalysisSelection(moduleId, catIdx, itemIdx, tagEl);
+        } else {
+            var moduleId = tagEl.dataset.moduleId;
+            var catIdx = parseInt(tagEl.dataset.catIdx, 10);
+            var itemIdx2 = parseInt(tagEl.dataset.itemIdx, 10);
+            toggleAnalysisSelection(moduleId, catIdx, itemIdx2, tagEl);
+        }
+        updateStepCountHeader();
+    }
+
+    function filterWizardTags(query) {
+        query = (query || '').trim().toLowerCase();
+        document.querySelectorAll('#wizardTags .tag').forEach(function(tag) {
+            var text = tag.textContent.toLowerCase();
+            tag.classList.toggle('hidden', query && text.indexOf(query) === -1);
+        });
+    }
+
+    function buildCustomControl(step) {
+        if (state.mode === 'analysis' && step.moduleId === '1') {
+            var html = '<div class="wizard-custom">';
+            // 参考图上传
+            html += '<div class="wizard-upload">';
+            if (state.custom.refImage) {
+                html += '<div class="wizard-upload-preview"><img src="' + state.custom.refImage + '" alt="参考图"><button class="wizard-upload-remove" id="wizardUploadRemove" title="移除">×</button></div>';
+            } else {
+                html += '<div class="wizard-upload-zone" id="wizardUploadZone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg><span>上传参考图</span></div>';
+            }
+            html += '<input type="file" id="wizardFileInput" accept="image/jpeg,image/png,image/webp" hidden></div>';
+            // 建筑名称
+            html += '<div class="wizard-field"><label>参考建筑名称</label><input type="text" id="wizardBuildingName" placeholder="输入建筑 / 事务所名称" value="' + escapeHtml(state.custom.buildingName) + '"></div>';
+            // 配色选择（选中「参考配色」时显示）
+            if (referenceColorSelected()) {
+                html += buildPalettePicker();
+            }
+            html += '</div>';
+            return html;
+        }
+        return '';
+    }
+
+    function referenceColorSelected() {
+        var sel = false;
+        state.selected.forEach(function(val) {
+            if (val.item && val.item.label === '参考配色') sel = true;
+        });
+        return sel;
+    }
+
+    function buildPalettePicker() {
+        var presets = ['#EF4444','#F97316','#F59E0B','#FBBF24','#10B981','#06B6D4','#3B82F6','#6366F1','#8B5CF6','#EC4899','#F472B6','#84CC16','#64748B','#FFFFFF','#111827'];
+        var html = '<div class="wizard-field"><label>参考配色</label><div class="palette-picker" id="palettePicker">';
+        presets.forEach(function(c) {
+            var on = state.custom.palette.indexOf(c) >= 0 ? ' selected' : '';
+            html += '<button class="palette-swatch' + on + '" data-color="' + c + '" style="background:' + c + '" title="' + c + '"></button>';
+        });
+        html += '</div><div class="palette-selected" id="paletteSelected">' + (state.custom.palette.length ? state.custom.palette.join(' ') : '未选择') + '</div></div>';
+        return html;
+    }
+
+    function bindWizardCustomEvents(step) {
+        // 参考图上传
+        var zone = document.getElementById('wizardUploadZone');
+        var fileInput = document.getElementById('wizardFileInput');
+        if (zone && fileInput) {
+            zone.addEventListener('click', function() { fileInput.click(); });
+            zone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('dragover'); });
+            zone.addEventListener('dragleave', function() { this.classList.remove('dragover'); });
+            zone.addEventListener('drop', function(e) {
+                e.preventDefault(); this.classList.remove('dragover');
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) handleWizardImageFile(e.dataTransfer.files[0]);
+            });
+            fileInput.addEventListener('change', function() { if (this.files && this.files[0]) handleWizardImageFile(this.files[0]); });
+        }
+        var rm = document.getElementById('wizardUploadRemove');
+        if (rm) rm.addEventListener('click', function() {
+            state.custom.refImage = null;
+            renderWizardContent();
+            updatePrompt();
+        });
+        // 建筑名称
+        var nameInput = document.getElementById('wizardBuildingName');
+        if (nameInput) nameInput.addEventListener('input', function() {
+            state.custom.buildingName = this.value;
+            updatePrompt();
+        });
+        // 配色
+        var picker = document.getElementById('palettePicker');
+        if (picker) picker.querySelectorAll('.palette-swatch').forEach(function(sw) {
+            sw.addEventListener('click', function() {
+                var c = this.dataset.color;
+                var idx = state.custom.palette.indexOf(c);
+                if (idx >= 0) state.custom.palette.splice(idx, 1);
+                else state.custom.palette.push(c);
+                this.classList.toggle('selected');
+                var out = document.getElementById('paletteSelected');
+                if (out) out.textContent = state.custom.palette.length ? state.custom.palette.join(' ') : '未选择';
+                updatePrompt();
+            });
+        });
+    }
+
+    function handleWizardImageFile(file) {
+        if (!file || !file.type.startsWith('image/')) return;
+        if (file.size > 20 * 1024 * 1024) { showToast('图片不能超过 20MB'); return; }
+        showToast('正在处理图片...');
+        if (typeof createImageBitmap === 'function') {
+            createImageBitmap(file).then(function(bmp) {
+                try { compressWizardImage(bmp); } finally { if (bmp.close) bmp.close(); }
+            }).catch(function() { readWizardImage(file); });
+        } else {
+            readWizardImage(file);
+        }
+        function compressWizardImage(source) {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            if (!ctx) { showToast('浏览器不支持 Canvas'); return; }
+            var maxDim = 1200, w = source.width, h = source.height;
+            if (w > maxDim || h > maxDim) {
+                if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+                else { w = Math.round(w * maxDim / h); h = maxDim; }
+            }
+            canvas.width = w; canvas.height = h;
+            ctx.drawImage(source, 0, 0, w, h);
+            state.custom.refImage = canvas.toDataURL('image/jpeg', 0.85);
+            renderWizardContent();
+            updatePrompt();
+        }
+        function readWizardImage(f) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                var img = new Image();
+                img.onload = function() { compressWizardImage(img); };
+                img.onerror = function() { showToast('图片加载失败'); };
+                img.src = e.target.result;
+            };
+            reader.onerror = function() { showToast('文件读取失败'); };
+            reader.readAsDataURL(f);
+        }
+    }
+
+    function shortCatTitle(t) {
+        if (!t) return t;
+        t = t.replace(/^第[一二三四五六七八九十]+类：/, '');
+        t = t.replace(/（[^）]*）$/, '');
+        return t.trim();
+    }
+
+    // ---------------------------------------------------------------
+    // 效果图模式现统一使用向导式 UI（renderWizard），与分析图共用「模块 → 类别 → 词条」结构。
+    // 旧的完整面板渲染函数 renderRenderingDimensions 已被向导取代，不再使用。
+
+    // ---------------------------------------------------------------
+    // 分析图模式渲染 (三级嵌套: 模块 → 类别 → 词条)
+    // ---------------------------------------------------------------
+    function renderAnalysisDimensions() {
+        var html = buildSearchBarHtml();
+
+        // Nav dots for modules M00-M07
+        html += '<div class="nav-dots-bar" id="navDotsBar">';
+        state.data.forEach(function(mod) {
+            var catClass = getModuleDotClass(mod.id);
+            html += '<button class="nav-dot ' + catClass + '" data-module-id="' + mod.id + '" title="' + mod.id + ' ' + mod.title + '" tabindex="0" aria-label="跳转到' + mod.id + ' ' + mod.title + '">' + mod.id + '</button>';
+        });
+        html += '</div>';
+
+        // Modules
+        state.data.forEach(function(mod) {
+            var modCatClass = getModuleSectionClass(mod.id);
+
+            html += '<div class="module-section ' + modCatClass + '" data-module-id="' + mod.id + '" id="moduleSection-' + mod.id + '">';
+
+            // Module header
+            html += '<div class="module-header" data-module-id="' + mod.id + '" tabindex="0" role="button" aria-expanded="true">' +
+                '<div class="module-header-left">' +
+                    '<span class="module-badge">' + mod.id + '</span>' +
+                    '<span class="module-title">' + mod.title + '</span>' +
+                    '<span class="module-desc">' + mod.desc + '</span>' +
+                '</div>' +
+                '<div class="module-header-right">' +
+                    '<span class="module-count" id="moduleCount-' + mod.id + '">' + getModuleTotalItems(mod) + '</span>' +
+                    '<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">' +
+                        '<polyline points="6 9 12 15 18 9"/>' +
+                    '</svg>' +
+                '</div>' +
+            '</div>';
+
+            // Module body - categories
+            html += '<div class="module-body">';
+            mod.categories.forEach(function(cat, catIdx) {
+                html += '<div class="category-section" data-module-id="' + mod.id + '" data-cat-idx="' + catIdx + '" id="catSection-' + mod.id + '-cat' + catIdx + '">';
+
+                // Category header
+                html += '<div class="category-header" data-module-id="' + mod.id + '" data-cat-idx="' + catIdx + '" tabindex="0" role="button" aria-expanded="true">' +
+                    '<div class="category-header-left">' +
+                        '<span class="category-title">' + cat.title + '</span>' +
+                    '</div>' +
+                    '<div class="category-header-right">' +
+                        '<span class="category-count" id="catCount-' + mod.id + '-cat' + catIdx + '">' + cat.items.length + '</span>' +
+                        '<svg class="chevron chevron-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">' +
+                            '<polyline points="6 9 12 15 18 9"/>' +
+                        '</svg>' +
+                    '</div>' +
+                '</div>';
+
+                // Category body - tags
+                html += '<div class="category-body">' +
+                    '<div class="dimension-tags" data-module-id="' + mod.id + '" data-cat-idx="' + catIdx + '">';
+
+                cat.items.forEach(function(item, itemIdx) {
+                    html += renderAnalysisTag(mod, cat, item, catIdx, itemIdx);
+                });
+
+                html += '</div></div>'; // close category-body
+                html += '</div>'; // close category-section
+            });
+
+            html += '</div>'; // close module-body
+            html += '</div>'; // close module-section
+        });
+
+        html += buildBackToTopHtml();
+        dimensionsPanel.innerHTML = html;
+
+        // Bind events
+        bindAnalysisTagEvents();
+        bindModuleHeaderEvents();
+        bindCategoryHeaderEvents();
+        bindAnalysisNavDotEvents();
+        bindScrollTracking();
+        bindBackToTop();
+    }
+
+    function buildSearchBarHtml() {
+        return '<div class="search-bar">' +
             '<svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">' +
                 '<circle cx="11" cy="11" r="8"/>' +
                 '<path d="m21 21-4.35-4.35"/>' +
@@ -42,80 +567,77 @@
             '<input type="text" id="searchInputInner" placeholder="搜索提示词（中英文）..." class="search-input">' +
             '<span class="search-info" id="searchInfo"></span>' +
         '</div>';
+    }
 
-        // Nav dots index bar
-        html += '<div class="nav-dots-bar" id="navDotsBar">';
-        state.data.forEach(function(dim) {
-            var catClass = getDimCategoryClass(dim.id);
-            html += '<button class="nav-dot ' + catClass + '" data-dim-id="' + dim.id + '" title="' + dim.title + '" tabindex="0" aria-label="跳转到' + dim.title + '">' + dim.id + '</button>';
-        });
-        html += '</div>';
-
-        state.data.forEach(function(dim) {
-            var catClass = getDimCategoryClass(dim.id);
-            var hasRadioBadge = (dim.col_layout === 'render_param') ? '<span class="radio-badge">单选</span>' : '';
-
-            var tagsHtml = dim.items.map(function(item, idx) {
-                return renderTag(dim, item, idx);
-            }).join('');
-
-            html += '<div class="dimension-section ' + catClass + (dim.col_layout === 'render_param' ? ' dim-single-select' : '') + '" data-dim-id="' + dim.id + '" id="dimSection-' + dim.id + '">' +
-                '<div class="dimension-header" data-dim-id="' + dim.id + '" tabindex="0" role="button" aria-expanded="true">' +
-                    '<div class="dimension-header-left">' +
-                        '<span class="dimension-number">' + dim.id + '</span>' +
-                        '<span class="dimension-title">' + dim.title + hasRadioBadge + '</span>' +
-                    '</div>' +
-                    '<div class="dimension-header-right">' +
-                        '<span class="dimension-count" id="count-' + dim.id + '">' + dim.items.length + '</span>' +
-                        '<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">' +
-                            '<polyline points="6 9 12 15 18 9"/>' +
-                        '</svg>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="dimension-body">' +
-                    '<div class="dimension-tags" data-dim-id="' + dim.id + '">' +
-                        tagsHtml +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-        });
-
-        // Back-to-top button
-        html += '<button class="btn-back-to-top" id="btnBackToTop" title="返回顶部" aria-label="返回顶部">' +
+    function buildBackToTopHtml() {
+        return '<button class="btn-back-to-top" id="btnBackToTop" title="返回顶部" aria-label="返回顶部">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">' +
                 '<polyline points="18 15 12 9 6 15"/>' +
             '</svg>' +
         '</button>';
+    }
 
-        dimensionsPanel.innerHTML = html;
+    // ===== Render Analysis Tag =====
+    function renderAnalysisTag(mod, cat, item, catIdx, itemIdx) {
+        var key = mod.id + '::' + catIdx + '::' + itemIdx;
+        var isSelected = state.selected.has(key);
+        var tagContent = buildTagContent(item);
+        var cls = isSelected ? 'tag selected' : 'tag';
+        return '<span class="' + cls + '" data-module-id="' + mod.id + '" data-cat-idx="' + catIdx + '" data-item-idx="' + itemIdx + '" data-key="' + key + '" tabindex="0" role="checkbox" aria-checked="' + (isSelected ? 'true' : 'false') + '">' +
+            tagContent +
+        '</span>';
+    }
 
-        // Bind tag click events
+    function buildTagContent(item) {
+        var content = '<span class="tag-label">' + item.label + '</span>';
+        if (item.en && state.lang !== 'cn') {
+            content += '<span class="tag-en">' + item.en + '</span>';
+        }
+        if (item.cn && state.lang !== 'en') {
+            content += '<span class="tag-en">' + item.cn + '</span>';
+        }
+        if (item.extra) {
+            content += '<span class="tag-extra">' + item.extra + '</span>';
+        }
+        if (item.effect) {
+            content += '<span class="tag-effect">' + item.effect + '</span>';
+        }
+        if (item.tool) {
+            content += '<span class="tag-tool">' + item.tool + '</span>';
+        }
+        return content;
+    }
+
+    // ===== Event Binding =====
+
+    function bindAnalysisTagEvents() {
         document.querySelectorAll('.tag').forEach(function(tag) {
             tag.addEventListener('click', function() {
-                const dimId = parseInt(this.dataset.dimId);
-                const itemIdx = parseInt(this.dataset.itemIdx);
-                toggleSelection(dimId, itemIdx, this);
+                var moduleId = this.dataset.moduleId;
+                var catIdx = parseInt(this.dataset.catIdx);
+                var itemIdx = parseInt(this.dataset.itemIdx);
+                toggleAnalysisSelection(moduleId, catIdx, itemIdx, this);
             });
-            // Keyboard: Enter / Space to toggle
             tag.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    const dimId = parseInt(this.dataset.dimId);
-                    const itemIdx = parseInt(this.dataset.itemIdx);
-                    toggleSelection(dimId, itemIdx, this);
+                    var moduleId = this.dataset.moduleId;
+                    var catIdx = parseInt(this.dataset.catIdx);
+                    var itemIdx = parseInt(this.dataset.itemIdx);
+                    toggleAnalysisSelection(moduleId, catIdx, itemIdx, this);
                 }
             });
         });
+    }
 
-        // Bind dimension header collapse
+    function bindHeaderEvents() {
         document.querySelectorAll('.dimension-header').forEach(function(header) {
             header.addEventListener('click', function() {
-                const section = this.closest('.dimension-section');
+                var section = this.closest('.dimension-section');
                 section.classList.toggle('collapsed');
                 var expanded = !section.classList.contains('collapsed');
                 this.setAttribute('aria-expanded', expanded ? 'true' : 'false');
             });
-            // Keyboard: Enter to toggle
             header.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
@@ -123,89 +645,73 @@
                 }
             });
         });
+    }
 
-        // Nav dots click → scroll to dimension
+    function bindModuleHeaderEvents() {
+        document.querySelectorAll('.module-header').forEach(function(header) {
+            header.addEventListener('click', function() {
+                var section = this.closest('.module-section');
+                section.classList.toggle('collapsed');
+                var expanded = !section.classList.contains('collapsed');
+                this.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            });
+            header.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.click();
+                }
+            });
+        });
+    }
+
+    function bindCategoryHeaderEvents() {
+        document.querySelectorAll('.category-header').forEach(function(header) {
+            header.addEventListener('click', function() {
+                var section = this.closest('.category-section');
+                section.classList.toggle('collapsed');
+                var expanded = !section.classList.contains('collapsed');
+                this.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            });
+            header.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.click();
+                }
+            });
+        });
+    }
+
+    function bindAnalysisNavDotEvents() {
         document.querySelectorAll('.nav-dot').forEach(function(dot) {
             dot.addEventListener('click', function() {
-                var dimId = this.dataset.dimId;
-                var section = document.getElementById('dimSection-' + dimId);
+                var moduleId = this.dataset.moduleId;
+                var section = document.getElementById('moduleSection-' + moduleId);
                 if (section) {
                     section.classList.remove('collapsed');
                     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
         });
+    }
 
-        // Scroll listener: highlight current nav dot + show/hide back-to-top
-        bindScrollTracking();
-
-        // Back-to-top button
+    function bindBackToTop() {
         var btnBackToTop = document.getElementById('btnBackToTop');
         if (btnBackToTop) {
             btnBackToTop.addEventListener('click', function() {
                 dimensionsPanel.scrollTo({ top: 0, behavior: 'smooth' });
             });
         }
-
-        // Bind search
-        const searchInputInner = document.getElementById('searchInputInner');
-        if (searchInputInner) {
-            searchInputInner.addEventListener('input', function() {
-                handleSearch(this.value);
-            });
-        }
-    }
-
-    // ===== Render Single Tag =====
-    function renderTag(dim, item, idx) {
-        const key = dim.id + '-' + idx;
-        const isSelected = state.selected.has(key);
-
-        let tagContent = '';
-
-        // Tag label (always show)
-        tagContent += `<span class="tag-label">${item.label}</span>`;
-
-        // English keyword
-        if (item.en && state.lang !== 'cn') {
-            tagContent += `<span class="tag-en">${item.en}</span>`;
-        }
-
-        // Chinese keyword (only show in 'cn' or 'both' mode, and only if it exists)
-        if (item.cn && state.lang === 'cn') {
-            tagContent += `<span class="tag-en">${item.cn}</span>`;
-        } else if (item.cn && state.lang === 'both') {
-            tagContent += `<span class="tag-en">${item.cn}</span>`;
-        }
-
-        // Extra info (e.g., 适用场景, 色温, 焦距)
-        if (item.extra) {
-            tagContent += `<span class="tag-extra">${item.extra}</span>`;
-        }
-
-        // Effect (for view angle dimension)
-        if (item.effect) {
-            tagContent += `<span class="tag-effect">${item.effect}</span>`;
-        }
-
-        // Tool (for render param dimension)
-        if (item.tool) {
-            tagContent += `<span class="tag-tool">${item.tool}</span>`;
-        }
-
-        const cls = isSelected ? 'tag selected' : 'tag';
-
-        return '<span class="' + cls + '" data-dim-id="' + dim.id + '" data-item-idx="' + idx + '" data-key="' + key + '" tabindex="0" role="checkbox" aria-checked="' + (isSelected ? 'true' : 'false') + '">' +
-            tagContent +
-        '</span>';
     }
 
     // ===== Toggle Selection =====
-    function toggleSelection(dimId, itemIdx, tagEl) {
-        const key = dimId + '-' + itemIdx;
-        const dim = state.data.find(function(d) { return d.id === dimId; });
-        if (!dim) return;
-        const item = dim.items[itemIdx];
+
+    function toggleAnalysisSelection(moduleId, catIdx, itemIdx, tagEl) {
+        var key = moduleId + '::' + catIdx + '::' + itemIdx;
+        var mod = findModule(moduleId);
+        if (!mod) return;
+        var cat = mod.categories[catIdx];
+        if (!cat) return;
+        var item = cat.items[itemIdx];
         if (!item) return;
 
         if (state.selected.has(key)) {
@@ -213,19 +719,15 @@
             tagEl.classList.remove('selected');
             tagEl.setAttribute('aria-checked', 'false');
         } else {
-            // For render_param dimension (dim 10), only allow one selection
-            // (you usually pick one render style)
-            if (dimId === 10) {
-                // Remove existing selections from dim 10
-                state.selected.forEach(function(val, k) {
-                    if (k.startsWith('10-')) {
-                        state.selected.delete(k);
-                        const existingTag = document.querySelector('.tag[data-key="' + k + '"]');
-                        if (existingTag) existingTag.classList.remove('selected');
-                    }
-                });
-            }
-            state.selected.set(key, { dimId: dimId, itemIdx: itemIdx, item: item, dimTitle: dim.title });
+            state.selected.set(key, {
+                moduleId: moduleId,
+                catIdx: catIdx,
+                itemIdx: itemIdx,
+                item: item,
+                role: cat.role,
+                moduleTitle: mod.title,
+                catTitle: cat.title
+            });
             tagEl.classList.add('selected');
             tagEl.setAttribute('aria-checked', 'true');
         }
@@ -238,21 +740,21 @@
     // ===== Update Selected Tags Display =====
     function updateSelectedTags() {
         if (state.selected.size === 0) {
-            selectedTags.innerHTML = '<div class="empty-hint">从左侧选择提示词，将自动生成完整提示语</div>';
+            selectedTags.innerHTML = '<div class="empty-hint">在向导中选择提示词，将自动生成完整提示语</div>';
             return;
         }
 
-        let html = '';
+        var html = '';
         state.selected.forEach(function(val, key) {
-            const label = val.item.label;
-            const dimNum = val.dimId;
-            html += `
-                <span class="selected-tag">
-                    <span class="selected-tag-dim">D${dimNum}</span>
-                    ${label}
-                    <button class="selected-tag-remove" data-key="${key}" title="移除">&times;</button>
-                </span>
-            `;
+            var label = val.item.label;
+            var badge;
+
+            badge = '<span class="selected-tag-dim">' + val.moduleId + '</span>';
+
+            html += '<span class="selected-tag" data-key="' + key + '">' +
+                badge + label +
+                '<button class="selected-tag-remove" data-key="' + key + '" title="移除">&times;</button>' +
+            '</span>';
         });
         selectedTags.innerHTML = html;
 
@@ -260,19 +762,21 @@
         selectedTags.querySelectorAll('.selected-tag-remove').forEach(function(btn) {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
-                const key = this.dataset.key;
-                removeSelection(key);
+                removeSelection(this.dataset.key);
             });
         });
 
-        // Bind tag click → scroll to dimension + pulse highlight
+        // Bind tag click → scroll
         selectedTags.querySelectorAll('.selected-tag').forEach(function(tag) {
             tag.addEventListener('click', function(e) {
                 if (e.target.closest('.selected-tag-remove')) return;
-                var dimId = this.querySelector('.selected-tag-dim').textContent.replace('D', '');
-                scrollToDimensionAndPulse(parseInt(dimId));
+                scrollToSelection(this.dataset.key);
             });
         });
+
+        // 同步向导步骤条状态
+        updateWizardStepbar();
+        updateStepCountHeader();
     }
 
     // ===== Remove Selection =====
@@ -280,7 +784,7 @@
         if (!state.selected.has(key)) return;
         state.selected.delete(key);
 
-        const tagEl = document.querySelector('.tag[data-key="' + key + '"]');
+        var tagEl = document.querySelector('.tag[data-key="' + key + '"]');
         if (tagEl) tagEl.classList.remove('selected');
 
         updateSelectedTags();
@@ -288,103 +792,81 @@
         updatePrompt();
     }
 
+    // ===== Scroll to Selection =====
+    function scrollToSelection(key) {
+        var tagEl = document.querySelector('.tag[data-key="' + key + '"]');
+        if (!tagEl) return;
+
+        // Expand all parent containers
+        var catSection = tagEl.closest('.category-section');
+        if (catSection) catSection.classList.remove('collapsed');
+        var modSection = tagEl.closest('.module-section');
+        if (modSection) modSection.classList.remove('collapsed');
+
+        tagEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Pulse highlight
+        tagEl.classList.add('pulse-highlight');
+        setTimeout(function() { tagEl.classList.remove('pulse-highlight'); }, 1500);
+    }
+
     // ===== Update Dimension Counts =====
     function updateDimensionCounts() {
-        // Reset all
-        state.data.forEach(function(dim) {
-            const countEl = document.getElementById('count-' + dim.id);
-            if (countEl) {
-                countEl.textContent = dim.items.length;
-                countEl.classList.remove('has-selection');
-            }
-        });
-
-        // Count selected per dimension
-        const counts = {};
-        state.selected.forEach(function(val) {
-            counts[val.dimId] = (counts[val.dimId] || 0) + 1;
-        });
-
-        Object.keys(counts).forEach(function(dimId) {
-            const countEl = document.getElementById('count-' + dimId);
-            if (countEl) {
-                countEl.textContent = counts[dimId] + '/' + getDimItemCount(parseInt(dimId));
-                countEl.classList.add('has-selection');
-            }
-        });
-
-        // Update nav dots selection state
+        // 两种模式结构一致（模块 → 类别 → 词条），统一走 analysis 计数逻辑
+        updateAnalysisCounts();
         updateNavDotSelectionState();
     }
 
-    // ===== Scroll to Dimension + Pulse =====
-    function scrollToDimensionAndPulse(dimId) {
-        var section = document.getElementById('dimSection-' + dimId);
-        if (!section) return;
+    function updateAnalysisCounts() {
+        state.data.forEach(function(mod) {
+            // Update module total count
+            var modTotal = getModuleTotalItems(mod);
+            var modSelected = 0;
 
-        // Ensure expanded
-        section.classList.remove('collapsed');
-        var header = section.querySelector('.dimension-header');
-        if (header) header.setAttribute('aria-expanded', 'true');
+            mod.categories.forEach(function(cat, catIdx) {
+                var countEl = document.getElementById('catCount-' + mod.id + '-cat' + catIdx);
+                var selectedInCat = 0;
+                state.selected.forEach(function(val) {
+                    if (val.moduleId === mod.id && val.catIdx === catIdx) selectedInCat++;
+                });
+                modSelected += selectedInCat;
 
-        // Scroll
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if (countEl) {
+                    if (selectedInCat > 0) {
+                        countEl.textContent = selectedInCat + '/' + cat.items.length;
+                        countEl.classList.add('has-selection');
+                    } else {
+                        countEl.textContent = cat.items.length;
+                        countEl.classList.remove('has-selection');
+                    }
+                }
+            });
 
-        // Pulse animation
-        section.classList.add('pulse-highlight');
-        setTimeout(function() {
-            section.classList.remove('pulse-highlight');
-        }, 1500);
-
-        // Also pulse the tags inside this dimension
-        section.querySelectorAll('.tag').forEach(function(tag, i) {
-            setTimeout(function() {
-                tag.classList.add('pulse-highlight');
-                setTimeout(function() { tag.classList.remove('pulse-highlight'); }, 1200);
-            }, i * 40);
+            // Update module count badge
+            var modCountEl = document.getElementById('moduleCount-' + mod.id);
+            if (modCountEl) {
+                if (modSelected > 0) {
+                    modCountEl.textContent = modSelected + '/' + modTotal;
+                    modCountEl.classList.add('has-selection');
+                } else {
+                    modCountEl.textContent = modTotal;
+                    modCountEl.classList.remove('has-selection');
+                }
+            }
         });
     }
 
-    function getDimItemCount(dimId) {
-        const dim = state.data.find(function(d) { return d.id === dimId; });
-        return dim ? dim.items.length : 0;
-    }
-
-    // ===== Category Color Mapping =====
-    function getDimCategoryClass(dimId) {
-        if (state.mode === 'analysis') {
-            // Analysis mode: map to M00-M07
-            if (dimId === 1) return 'dot-cat-m00 dim-cat-m00';
-            if (dimId >= 2 && dimId <= 9) return 'dot-cat-m01 dim-cat-m01';
-            if (dimId >= 10 && dimId <= 15) return 'dot-cat-m02 dim-cat-m02';
-            if (dimId >= 16 && dimId <= 22) return 'dot-cat-m03 dim-cat-m03';
-            if (dimId >= 23 && dimId <= 26) return 'dot-cat-m04 dim-cat-m04';
-            if (dimId >= 27 && dimId <= 31) return 'dot-cat-m05 dim-cat-m05';
-            if (dimId >= 32 && dimId <= 38) return 'dot-cat-m06 dim-cat-m06';
-            if (dimId >= 39 && dimId <= 43) return 'dot-cat-m07 dim-cat-m07';
-            return '';
-        }
-        // Rendering mode
-        // D1建筑类型, D2空间类型 → 建筑本体 Blue
-        if (dimId === 1 || dimId === 2) return 'dot-cat-structure dim-cat-structure';
-        // D3风格, D5色彩, D6光线, D7视角, D13布局/体量 → 设计表现 Purple
-        if (dimId === 3 || dimId === 5 || dimId === 6 || dimId === 7 || dimId === 13) return 'dot-cat-style dim-cat-style';
-        // D4立面材质 → 材质质感 Amber
-        if (dimId === 4) return 'dot-cat-material dim-cat-material';
-        // D8环境, D9情绪, D12景观 → 场景环境 Green
-        if (dimId === 8 || dimId === 9 || dimId === 12) return 'dot-cat-environment dim-cat-environment';
-        // D10渲染参数 → 技术工具 Slate
-        if (dimId === 10) return 'dot-cat-tech dim-cat-tech';
-        // D11医疗家具, D14医院专项细节, D15内部照明/饰面 → 内部布置 Coral
-        if (dimId === 11 || dimId === 14 || dimId === 15) return 'dot-cat-interior dim-cat-interior';
-        return '';
+    function getModuleTotalItems(mod) {
+        var total = 0;
+        mod.categories.forEach(function(cat) { total += cat.items.length; });
+        return total;
     }
 
     // ===== Scroll Tracking =====
     var scrollTrackingTimer = null;
     var scrollTrackingBound = false;
     function bindScrollTracking() {
-        if (scrollTrackingBound) return; // Avoid duplicate listeners on mode switch
+        if (scrollTrackingBound) return;
         scrollTrackingBound = true;
         dimensionsPanel.addEventListener('scroll', function() {
             if (scrollTrackingTimer) clearTimeout(scrollTrackingTimer);
@@ -396,21 +878,33 @@
     function updateNavDotActive() {
         var scrollTop = dimensionsPanel.scrollTop;
         var panelHeight = dimensionsPanel.clientHeight;
-        var currentDimId = null;
+        var currentId = null;
 
-        document.querySelectorAll('.dimension-section').forEach(function(section) {
-            var rect = section.getBoundingClientRect();
-            var panelRect = dimensionsPanel.getBoundingClientRect();
-            var relativeTop = rect.top - panelRect.top;
-            // Mark as current if its header is in the top 40% of the viewport
-            if (relativeTop >= -20 && relativeTop < panelHeight * 0.4) {
-                currentDimId = section.dataset.dimId;
-            }
-        });
+        if (state.mode === 'analysis') {
+            // Track module sections
+            document.querySelectorAll('.module-section').forEach(function(section) {
+                var rect = section.getBoundingClientRect();
+                var panelRect = dimensionsPanel.getBoundingClientRect();
+                var relativeTop = rect.top - panelRect.top;
+                if (relativeTop >= -20 && relativeTop < panelHeight * 0.4) {
+                    currentId = section.dataset.moduleId;
+                }
+            });
+        } else {
+            document.querySelectorAll('.dimension-section').forEach(function(section) {
+                var rect = section.getBoundingClientRect();
+                var panelRect = dimensionsPanel.getBoundingClientRect();
+                var relativeTop = rect.top - panelRect.top;
+                if (relativeTop >= -20 && relativeTop < panelHeight * 0.4) {
+                    currentId = section.dataset.moduleId;
+                }
+            });
+        }
 
         document.querySelectorAll('.nav-dot').forEach(function(dot) {
             dot.classList.remove('active');
-            if (dot.dataset.dimId === currentDimId) {
+            var dotId = dot.dataset.moduleId;
+            if (dotId === currentId) {
                 dot.classList.add('active');
             }
         });
@@ -430,32 +924,255 @@
         document.querySelectorAll('.nav-dot').forEach(function(dot) {
             dot.classList.remove('has-selection');
         });
+
         state.selected.forEach(function(val) {
-            var dot = document.querySelector('.nav-dot[data-dim-id="' + val.dimId + '"]');
+            var dotId = val.moduleId;
+            var dot = document.querySelector('.nav-dot[data-module-id="' + dotId + '"]');
             if (dot) dot.classList.add('has-selection');
         });
-        // Re-sync active state
         updateNavDotActive();
     }
 
-    // ===== Build flat selections list for PromptEngine =====
-    // 注意：真正的 PromptEngine（buildSentence/buildKeywordPhrase）来自 prompt-engine.js，
-    // 挂载在 window.PromptEngine 上，此文件不应重复定义同名变量（会遮蔽真实引擎）。
+    // ===== Category Color Mapping =====
+    function getDimCategoryClass(dimId) {
+        return '';
+    }
+
+    function getModuleDotClass(moduleId) {
+        var classMap = {
+            '1': 'dot-cat-m00',
+            '2': 'dot-cat-m01',
+            '3': 'dot-cat-m02',
+            '4': 'dot-cat-m03',
+            '5': 'dot-cat-m04',
+            '6': 'dot-cat-m05',
+            '7': 'dot-cat-m06',
+            '8': 'dot-cat-m07'
+        };
+        return classMap[moduleId] || '';
+    }
+
+    function getModuleSectionClass(moduleId) {
+        var classMap = {
+            '1': 'dim-cat-m00',
+            '2': 'dim-cat-m01',
+            '3': 'dim-cat-m02',
+            '4': 'dim-cat-m03',
+            '5': 'dim-cat-m04',
+            '6': 'dim-cat-m05',
+            '7': 'dim-cat-m06',
+            '8': 'dim-cat-m07'
+        };
+        return classMap[moduleId] || '';
+    }
+
+    // ===== Find Module =====
+    function findModule(moduleId) {
+        return state.data.find(function(m) { return m.id === moduleId; });
+    }
+
+    // ===== Build Selections List for PromptEngine =====
     function buildSelectionsList() {
         var list = [];
-        state.data.forEach(function(dim) {
-            state.selected.forEach(function(val) {
-                if (val.dimId !== dim.id) return;
-                if (dim.id === 10 && val.item.label === 'SD负面固定包') return;
-                list.push({ role: dim.role, en: val.item.en, cn: val.item.cn });
+        if (state.mode === 'analysis') {
+            state.data.forEach(function(mod) {
+                state.selected.forEach(function(val) {
+                    if (val.moduleId !== mod.id) return;
+                    list.push({ role: val.role, en: val.item.en, cn: val.item.label });
+                });
             });
-        });
+        } else {
+            state.data.forEach(function(mod) {
+                state.selected.forEach(function(val) {
+                    if (val.moduleId !== mod.id) return;
+                    list.push({ role: val.role, en: val.item.en, cn: val.item.cn || val.item.label });
+                });
+            });
+        }
         return list;
+    }
+
+    // ===== Keyword Tree (Change 1) =====
+    function pad2(n) { n = String(n); return n.length >= 2 ? n : '0' + n; }
+
+    function itemText(item, lang) {
+        if (lang === 'en') return item.en || item.label;
+        if (lang === 'both') return item.label + ' / ' + (item.en || item.label);
+        return item.label;
+    }
+
+    // ===== 关键词树状图：英文模式下的模块 / 类别 / 维度英文名 =====
+    var MODULE_EN = {
+        '1': 'Reference Source',
+        '2': 'Input Control',
+        '3': 'Design Intent',
+        '4': 'Architectural Logic',
+        '5': 'Visual Grammar',
+        '6': 'Architectural Representation',
+        '7': 'Visual Style',
+        '8': 'Output Quality'
+    };
+    var CATEGORY_EN = {
+        'reference': 'Reference Source',
+        'control_geometry': 'Geometry Lock',
+        'control_context': 'Context Lock',
+        'control_camera': 'Camera Lock',
+        'control_editable': 'Editable Layers',
+        'control_semantic': 'Semantic Lock',
+        'control_forbidden': 'Forbidden',
+        'control_priority': 'Priority',
+        'control_level': 'Constraint Level',
+        'intent_goal': 'Design Goal',
+        'intent_analysis': 'Analysis Goal',
+        'intent_deliverable': 'Deliverable Type',
+        'intent_mode': 'Work Mode',
+        'intent_scope': 'Work Scope',
+        'intent_audience': 'Audience',
+        'logic_spatial': 'Spatial Logic',
+        'logic_functional': 'Functional Logic',
+        'logic_environmental': 'Environmental Logic',
+        'logic_urban': 'Urban Logic',
+        'logic_architectural': 'Architectural Form Operation',
+        'logic_experience': 'Experience',
+        'logic_value': 'Value',
+        'grammar_elements': 'Diagram Elements',
+        'grammar_symbols': 'Graphic Symbols',
+        'grammar_relationship': 'Relationship Expression',
+        'grammar_type': 'Diagram Type',
+        'rep_rendering': 'Rendering Type',
+        'rep_drawing': 'Drawing Type',
+        'rep_detail': 'Detail Level',
+        'rep_finish': 'Finish Level',
+        'rep_expression': 'Expression Style',
+        'style_color': 'Color System',
+        'style_material': 'Material',
+        'style_texture': 'Texture',
+        'style_lighting': 'Lighting & Shadow',
+        'style_atmosphere': 'Atmosphere',
+        'style_brand': 'Brand Style / Studio',
+        'style_graphic': 'Graphic Language / Layout',
+        'output_quality': 'Quality',
+        'output_canvas': 'Canvas',
+        'output_composition': 'Composition',
+        'output_editability': 'Editability',
+        'output_consistency': 'Visual Consistency',
+        // 效果图模式新增角色
+        'constraint_light': 'Constraint Level (Light)',
+        'constraint_medium': 'Constraint Level (Medium)',
+        'constraint_high': 'Constraint Level (High)',
+        'subject': 'Building Typology',
+        'material': 'Material',
+        'style': 'Design Language',
+        'color': 'Color Palette',
+        'light': 'Lighting',
+        'weather': 'Weather & Atmosphere',
+        'view': 'Viewpoint / Camera',
+        'context': 'Context',
+        'mood': 'Mood',
+        'landscape': 'Landscape',
+        'quality': 'Image Quality'
+    };
+    function getModuleEn(id) { return MODULE_EN[id] || id; }
+    function getCatEnRole(role) { return CATEGORY_EN[role] || role; }
+    var RENDER_MODULE_EN = {
+        '1': 'Constraint Type',
+        '2': 'Building Typology',
+        '3': 'Facade / Skin Material',
+        '4': 'Material & Texture',
+        '5': 'Design Language',
+        '6': 'Color Palette',
+        '7': 'Lighting',
+        '8': 'Weather & Atmosphere',
+        '9': 'Viewpoint / Camera',
+        '10': 'Context',
+        '11': 'Mood',
+        '12': 'Image Quality',
+        '13': 'Landscape'
+    };
+    function getRenderModuleEn(id) { return RENDER_MODULE_EN[id] || id; }
+
+    function buildKeywordTree() {
+        var lang = state.lang;
+        var lines = [];
+
+        if (state.mode === 'analysis') {
+            var modCounter = 0;
+            state.data.forEach(function(mod) {
+                var modSels = [];
+                state.selected.forEach(function(val) {
+                    if (val.moduleId === mod.id) modSels.push(val);
+                });
+                if (!modSels.length) return;
+                modCounter++;
+                modSels.sort(function(a, b) { return (a.catIdx - b.catIdx) || (a.itemIdx - b.itemIdx); });
+
+                var modNum = pad2(modCounter);
+                var modName = (lang === 'en') ? getModuleEn(mod.id) : mod.title;
+                var prevCat = null;
+                modSels.forEach(function(val, i) {
+                    var txt = itemText(val.item, lang);
+                    var catName;
+                    if (lang === 'en') {
+                        var role = findModule(mod.id).categories[val.catIdx].role;
+                        catName = getCatEnRole(role);
+                    } else {
+                        catName = shortCatTitle(val.catTitle);
+                    }
+                    if (i === 0) {
+                        if (catName === modName) {
+                            lines.push(modNum + '-' + modName + ':' + txt);
+                        } else {
+                            lines.push(modNum + '-' + modName + '-' + catName + ':' + txt);
+                        }
+                    } else {
+                        if (catName === prevCat) {
+                            lines.push('-' + txt);
+                        } else {
+                            lines.push('-' + catName + ':' + txt);
+                        }
+                    }
+                    prevCat = catName;
+                });
+            });
+        } else {
+            var modCounter = 0;
+            state.data.forEach(function(mod) {
+                var modSels = [];
+                state.selected.forEach(function(val) {
+                    if (val.moduleId === mod.id) modSels.push(val);
+                });
+                if (!modSels.length) return;
+                modCounter++;
+                modSels.sort(function(a, b) { return (a.catIdx - b.catIdx) || (a.itemIdx - b.itemIdx); });
+                var modNum = pad2(modCounter);
+                var modName = (lang === 'en') ? getRenderModuleEn(mod.id) : mod.title;
+                var prevCat = null;
+                modSels.forEach(function(val, i) {
+                    var txt = itemText(val.item, lang);
+                    var catName;
+                    if (lang === 'en') {
+                        var role = findModule(mod.id).categories[val.catIdx].role;
+                        catName = getCatEnRole(role);
+                    } else {
+                        catName = shortCatTitle(val.catTitle);
+                    }
+                    if (i === 0) {
+                        if (catName === modName) lines.push(modNum + '-' + modName + ':' + txt);
+                        else lines.push(modNum + '-' + modName + '-' + catName + ':' + txt);
+                    } else {
+                        if (catName === prevCat) lines.push('-' + txt);
+                        else lines.push('-' + catName + ':' + txt);
+                    }
+                    prevCat = catName;
+                });
+            });
+        }
+        return lines.join('\n');
     }
 
     // ===== Generate Prompt =====
     function updatePrompt() {
-        const count = state.selected.size;
+        var count = state.selected.size;
         previewCount.textContent = count + ' 项已选';
         if (count > 0) {
             previewCount.classList.add('has-items');
@@ -470,57 +1187,33 @@
             return;
         }
 
-        // Separate items by dimension
-        const dimGroups = {};
-        const renderParams = [];  // dim 10 items
-        let hasNegativePrompt = false;
-        let negativePrompt = '';
-
-        // Process in dimension order
-        state.data.forEach(function(dim) {
-            state.selected.forEach(function(val) {
-                if (val.dimId === dim.id) {
-                    if (!dimGroups[dim.id]) dimGroups[dim.id] = [];
-                    dimGroups[dim.id].push(val.item);
-                }
-            });
-        });
-
-        // Check for negative prompt (SD负面固定包)
-        if (dimGroups[10]) {
-            dimGroups[10].forEach(function(item) {
-                if (item.label === 'SD负面固定包') {
-                    hasNegativePrompt = true;
-                    negativePrompt = item.en;
-                }
-            });
-        }
-
-        // Build the prompt using PromptEngine (mode-aware)
-        const selections = buildSelectionsList();
-        let promptStr;
-        if (state.mode === 'analysis') {
-            promptStr = state.format === 'keyword'
-                ? PromptEngine.buildAnalysisKeyword(selections, state.lang)
-                : PromptEngine.buildAnalysisSentence(selections, state.lang);
+        // Build prompt
+        var selections = buildSelectionsList();
+        var promptStr;
+        if (state.format === 'keyword') {
+            // 关键词模式统一使用树状结构
+            promptStr = buildKeywordTree();
+        } else if (state.mode === 'analysis') {
+            promptStr = PromptEngine.buildAnalysisSentence(selections, state.lang);
         } else {
-            promptStr = state.format === 'keyword'
-                ? PromptEngine.buildKeywordPhrase(selections, state.lang)
-                : PromptEngine.buildSentence(selections, state.lang);
+            promptStr = PromptEngine.buildSentence(selections, state.lang);
         }
 
-        // For 'both' mode, append Chinese translations as reference
-        if (state.lang === 'both') {
-            let cnParts = [];
-            state.data.forEach(function(dim) {
-                if (!dimGroups[dim.id]) return;
-                dimGroups[dim.id].forEach(function(item) {
-                    if (dim.id === 10) {
-                        if (item.label === 'SD负面固定包') return;
-                        // Don't add render params to Chinese section
-                    } else if (item.cn) {
-                        cnParts.push(item.cn);
-                    }
+        // 'both' mode - append Chinese
+        if (state.lang === 'both' && state.mode === 'rendering' && state.format !== 'keyword') {
+            var dimGroups = {};
+            state.data.forEach(function(mod) {
+                state.selected.forEach(function(val) {
+                    if (val.moduleId !== mod.id) return;
+                    if (!dimGroups[mod.id]) dimGroups[mod.id] = [];
+                    dimGroups[mod.id].push(val.item);
+                });
+            });
+            var cnParts = [];
+            state.data.forEach(function(mod) {
+                if (!dimGroups[mod.id]) return;
+                dimGroups[mod.id].forEach(function(item) {
+                    if (item.cn) cnParts.push(item.cn);
                 });
             });
             if (cnParts.length > 0) {
@@ -528,14 +1221,51 @@
             }
         }
 
-        // Display
+        // 'both' mode - analysis: append Chinese labels
+        if (state.lang === 'both' && state.mode === 'analysis' && state.format !== 'keyword') {
+            var analysisCnParts = [];
+            selections.forEach(function(sel) {
+                if (sel.cn) analysisCnParts.push(sel.cn);
+            });
+            if (analysisCnParts.length > 0) {
+                promptStr += '\n\n中文参考：' + analysisCnParts.join('、');
+            }
+        }
+
+        // Custom control values (analysis reference step)
+        if (state.mode === 'analysis') {
+            var extra = [];
+            if (state.custom.buildingName && state.custom.buildingName.trim()) {
+                extra.push('参考建筑名称：' + state.custom.buildingName.trim());
+            }
+            if (state.custom.palette && state.custom.palette.length) {
+                extra.push('参考配色：' + state.custom.palette.join(' '));
+            }
+            if (extra.length) {
+                promptStr += (promptStr ? '\n\n' : '') + extra.join('\n');
+            }
+        }
+
         promptText.textContent = promptStr;
 
-        // Handle negative prompt
-        if (hasNegativePrompt) {
-            negativePromptBox.style.display = 'flex';
-            negativePromptText.textContent = negativePrompt;
-            document.getElementById('btnCopyNegative').style.display = 'flex';
+        // Handle negative prompt (rendering mode only)
+        if (state.mode === 'rendering') {
+            var hasNegative = false;
+            var negPrompt = '';
+            state.selected.forEach(function(val) {
+                if (val.item.label === 'SD负面固定包') {
+                    hasNegative = true;
+                    negPrompt = val.item.en;
+                }
+            });
+            if (hasNegative) {
+                negativePromptBox.style.display = 'flex';
+                negativePromptText.textContent = negPrompt;
+                document.getElementById('btnCopyNegative').style.display = 'flex';
+            } else {
+                negativePromptBox.style.display = 'none';
+                document.getElementById('btnCopyNegative').style.display = 'none';
+            }
         } else {
             negativePromptBox.style.display = 'none';
             document.getElementById('btnCopyNegative').style.display = 'none';
@@ -551,41 +1281,66 @@
         if (!query) {
             searchInfo.textContent = '';
             searchInfo.className = 'search-info';
-            // Show all
-            document.querySelectorAll('.tag').forEach(function(tag) {
-                tag.classList.remove('hidden');
-            });
-            document.querySelectorAll('.dimension-section').forEach(function(section) {
-                section.style.display = '';
-            });
+            document.querySelectorAll('.tag').forEach(function(tag) { tag.classList.remove('hidden'); });
+            if (state.mode === 'analysis') {
+                document.querySelectorAll('.module-section').forEach(function(s) { s.style.display = ''; });
+                document.querySelectorAll('.category-section').forEach(function(s) { s.style.display = ''; });
+            } else {
+                document.querySelectorAll('.dimension-section').forEach(function(s) { s.style.display = ''; });
+            }
             return;
         }
 
         var totalMatches = 0;
 
-        // Filter tags
-        document.querySelectorAll('.dimension-section').forEach(function(section) {
-            let hasMatch = false;
-            section.querySelectorAll('.tag').forEach(function(tag) {
-                const text = tag.textContent.toLowerCase();
-                if (text.indexOf(query) !== -1) {
-                    tag.classList.remove('hidden');
-                    hasMatch = true;
-                    totalMatches++;
-                } else {
-                    tag.classList.add('hidden');
+        if (state.mode === 'analysis') {
+            document.querySelectorAll('.module-section').forEach(function(modSection) {
+                var modHasMatch = false;
+                modSection.querySelectorAll('.category-section').forEach(function(catSection) {
+                    var catHasMatch = false;
+                    catSection.querySelectorAll('.tag').forEach(function(tag) {
+                        var text = tag.textContent.toLowerCase();
+                        if (text.indexOf(query) !== -1) {
+                            tag.classList.remove('hidden');
+                            catHasMatch = true;
+                            totalMatches++;
+                        } else {
+                            tag.classList.add('hidden');
+                        }
+                    });
+                    catSection.style.display = catHasMatch ? '' : 'none';
+                    if (catHasMatch) {
+                        catSection.classList.remove('collapsed');
+                        modHasMatch = true;
+                    }
+                });
+                modSection.style.display = modHasMatch ? '' : 'none';
+                if (modHasMatch) {
+                    modSection.classList.remove('collapsed');
                 }
             });
-            section.style.display = hasMatch ? '' : 'none';
-            // Expand sections with matches
-            if (hasMatch) {
-                section.classList.remove('collapsed');
-                var header = section.querySelector('.dimension-header');
-                if (header) header.setAttribute('aria-expanded', 'true');
-            }
-        });
+        } else {
+            document.querySelectorAll('.dimension-section').forEach(function(section) {
+                var hasMatch = false;
+                section.querySelectorAll('.tag').forEach(function(tag) {
+                    var text = tag.textContent.toLowerCase();
+                    if (text.indexOf(query) !== -1) {
+                        tag.classList.remove('hidden');
+                        hasMatch = true;
+                        totalMatches++;
+                    } else {
+                        tag.classList.add('hidden');
+                    }
+                });
+                section.style.display = hasMatch ? '' : 'none';
+                if (hasMatch) {
+                    section.classList.remove('collapsed');
+                    var header = section.querySelector('.dimension-header');
+                    if (header) header.setAttribute('aria-expanded', 'true');
+                }
+            });
+        }
 
-        // Update search info
         if (totalMatches > 0) {
             searchInfo.textContent = totalMatches + ' 个匹配';
             searchInfo.className = 'search-info has-results';
@@ -593,6 +1348,60 @@
             searchInfo.textContent = '无匹配结果';
             searchInfo.className = 'search-info no-results';
         }
+    }
+
+    // ===== Re-render Tags (for language switch) =====
+    function reRenderTags() {
+        // 统一路径：无论向导模式还是完整面板，标签均带 data-module-id / data-cat-idx / data-item-idx
+        document.querySelectorAll('.tag[data-module-id]').forEach(function(tagEl) {
+            var moduleId = tagEl.dataset.moduleId;
+            var catIdx = parseInt(tagEl.dataset.catIdx, 10);
+            var itemIdx = parseInt(tagEl.dataset.itemIdx, 10);
+            var mod = findModule(moduleId);
+            if (!mod || !mod.categories[catIdx]) return;
+            var item = mod.categories[catIdx].items[itemIdx];
+            if (!item) return;
+            tagEl.innerHTML = buildTagContent(item);
+            var key = moduleId + '::' + catIdx + '::' + itemIdx;
+            tagEl.setAttribute('aria-checked', state.selected.has(key) ? 'true' : 'false');
+            tagEl.setAttribute('tabindex', '0');
+        });
+    }
+
+    // ===== Mode Switch =====
+    function switchMode(newMode) {
+        state.mode = newMode;
+        state.data = (newMode === 'analysis') ? ANALYSIS_PROMPT_DATA : PROMPT_DATA;
+        state.selected.clear();
+        state.custom = { buildingName: '', palette: [], refImage: null };
+        state.currentStep = 0;
+        scrollTrackingBound = false;
+        renderDimensions();
+        updateSelectedTags();
+        updatePrompt();
+        bindSearchEvents();
+        showToast(newMode === 'analysis' ? '已切换到分析图模式' : '已切换到效果图模式');
+    }
+
+    function bindSearchEvents() {
+        var searchInputInner = document.getElementById('searchInputInner');
+        if (searchInputInner) {
+            searchInputInner.addEventListener('input', function() {
+                handleSearch(this.value);
+            });
+        }
+    }
+
+    // ===== Clear All =====
+    function clearAll() {
+        state.selected.clear();
+        document.querySelectorAll('.tag.selected').forEach(function(tag) {
+            tag.classList.remove('selected');
+        });
+        updateSelectedTags();
+        updateDimensionCounts();
+        updatePrompt();
+        showToast('已清空所有选择');
     }
 
     // ===== Copy to Clipboard =====
@@ -609,7 +1418,7 @@
     }
 
     function fallbackCopy(text) {
-        const textarea = document.createElement('textarea');
+        var textarea = document.createElement('textarea');
         textarea.value = text;
         textarea.style.position = 'fixed';
         textarea.style.opacity = '0';
@@ -625,7 +1434,7 @@
     }
 
     // ===== Toast =====
-    let toastTimer = null;
+    var toastTimer = null;
     function showToast(msg) {
         toast.textContent = msg;
         toast.classList.add('show');
@@ -635,77 +1444,12 @@
         }, 2000);
     }
 
-    // ===== Mode Switch =====
-    function switchMode(newMode) {
-        state.mode = newMode;
-        state.data = (newMode === 'analysis') ? ANALYSIS_PROMPT_DATA : PROMPT_DATA;
-        state.selected.clear();
-        renderDimensions();
-        updatePrompt();
-        bindDimensionEvents();
-        showToast(newMode === 'analysis' ? '已切换到分析图模式' : '已切换到效果图模式');
-    }
-
-    // ===== Clear All =====
-    function clearAll() {
-        state.selected.clear();
-        document.querySelectorAll('.tag.selected').forEach(function(tag) {
-            tag.classList.remove('selected');
-        });
-        updateSelectedTags();
-        updateDimensionCounts();
-        updatePrompt();
-        showToast('已清空所有选择');
-    }
-
-    // ===== Re-render Tags (for language switch) =====
-    function reRenderTags() {
-        state.data.forEach(function(dim) {
-            const tagsContainer = document.querySelector('.dimension-tags[data-dim-id="' + dim.id + '"]');
-            if (!tagsContainer) return;
-
-            dim.items.forEach(function(item, idx) {
-                const tagEl = tagsContainer.querySelector('.tag[data-item-idx="' + idx + '"]');
-                if (!tagEl) return;
-
-                // Re-render tag content
-                let content = '';
-                content += '<span class="tag-label">' + item.label + '</span>';
-
-                if (item.en && state.lang !== 'cn') {
-                    content += '<span class="tag-en">' + item.en + '</span>';
-                }
-                if (item.cn && (state.lang === 'cn' || state.lang === 'both')) {
-                    content += '<span class="tag-en">' + item.cn + '</span>';
-                }
-                if (item.extra) {
-                    content += '<span class="tag-extra">' + item.extra + '</span>';
-                }
-                if (item.effect) {
-                    content += '<span class="tag-effect">' + item.effect + '</span>';
-                }
-                if (item.tool) {
-                    content += '<span class="tag-tool">' + item.tool + '</span>';
-                }
-
-                tagEl.innerHTML = content;
-                // Update aria-checked
-                var key = dim.id + '-' + idx;
-                var isSelected = state.selected.has(key);
-                tagEl.setAttribute('aria-checked', isSelected ? 'true' : 'false');
-                tagEl.setAttribute('tabindex', '0');
-            });
-        });
-    }
-
-    // ===== Bind Events =====
+    // ===== Bind Main Events =====
     function bindEvents() {
         // Language toggle
         document.querySelectorAll('.lang-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                document.querySelectorAll('.lang-btn').forEach(function(b) {
-                    b.classList.remove('active');
-                });
+                document.querySelectorAll('.lang-btn').forEach(function(b) { b.classList.remove('active'); });
                 this.classList.add('active');
                 state.lang = this.dataset.lang;
                 reRenderTags();
@@ -716,23 +1460,19 @@
         // Format toggle
         document.querySelectorAll('.format-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
-                document.querySelectorAll('.format-btn').forEach(function(b) {
-                    b.classList.remove('active');
-                });
+                document.querySelectorAll('.format-btn').forEach(function(b) { b.classList.remove('active'); });
                 this.classList.add('active');
                 state.format = this.dataset.format;
                 updatePrompt();
             });
         });
 
-        // Mode switch (效果图 / 分析图)
+        // Mode switch
         document.querySelectorAll('.mode-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var newMode = this.dataset.mode;
                 if (state.mode === newMode) return;
-                document.querySelectorAll('.mode-btn').forEach(function(b) {
-                    b.classList.remove('active');
-                });
+                document.querySelectorAll('.mode-btn').forEach(function(b) { b.classList.remove('active'); });
                 this.classList.add('active');
                 switchMode(newMode);
             });
@@ -743,7 +1483,7 @@
 
         // Copy button
         document.getElementById('btnCopy').addEventListener('click', function() {
-            const text = promptText.textContent.trim();
+            var text = promptText.textContent.trim();
             if (text && !text.startsWith('选择提示词后')) {
                 copyToClipboard(text);
             } else {
@@ -753,13 +1493,14 @@
 
         // Copy negative prompt
         document.getElementById('btnCopyNegative').addEventListener('click', function() {
-            const text = negativePromptText.textContent.trim();
-            if (text) {
-                copyToClipboard(text);
-            }
+            var text = negativePromptText.textContent.trim();
+            if (text) copyToClipboard(text);
         });
 
-        // ===== Image Analysis Feature =====
+        // Search events (initial bind)
+        bindSearchEvents();
+
+        // Image analysis
         bindImageAnalysisEvents();
     }
 
@@ -770,7 +1511,6 @@
         matchedTags: []
     };
 
-    // History constants
     var HISTORY_STORAGE_KEY = 'hospital_building_image_history';
     var HISTORY_MAX_ITEMS = 10;
 
@@ -793,21 +1533,14 @@
         var panelCurrent = document.getElementById('tabPanelCurrent');
         var panelHistory = document.getElementById('tabPanelHistory');
 
-        tabCurrent.addEventListener('click', function() {
-            switchTab('current');
-        });
-
-        tabHistory.addEventListener('click', function() {
-            switchTab('history');
-            renderHistory();
-        });
+        tabCurrent.addEventListener('click', function() { switchTab('current'); });
+        tabHistory.addEventListener('click', function() { switchTab('history'); renderHistory(); });
 
         function switchTab(tab) {
             var tabs = document.querySelectorAll('.image-modal-tab');
             var panels = document.querySelectorAll('.image-modal-tab-panel');
             tabs.forEach(function(t) { t.classList.remove('active'); });
             panels.forEach(function(p) { p.classList.remove('active'); });
-
             if (tab === 'current') {
                 tabCurrent.classList.add('active');
                 panelCurrent.classList.add('active');
@@ -817,38 +1550,23 @@
             }
         }
 
-        // Open modal
         btnOpen.addEventListener('click', function() {
             overlay.classList.add('show');
-            // Load saved API key
             var savedKey = localStorage.getItem('deepseek_api_key') || '';
-            if (savedKey) {
-                apiKeyInput.value = savedKey;
-            }
-            // Always start on current tab
+            if (savedKey) apiKeyInput.value = savedKey;
             switchTab('current');
         });
 
-        // Close modal
-        btnClose.addEventListener('click', function() {
-            overlay.classList.remove('show');
-        });
+        btnClose.addEventListener('click', function() { overlay.classList.remove('show'); });
 
-        // Close on overlay click
         overlay.addEventListener('click', function(e) {
-            if (e.target === overlay) {
-                overlay.classList.remove('show');
-            }
+            if (e.target === overlay) overlay.classList.remove('show');
         });
 
-        // ESC to close modal
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && overlay.classList.contains('show')) {
-                overlay.classList.remove('show');
-            }
+            if (e.key === 'Escape' && overlay.classList.contains('show')) overlay.classList.remove('show');
         });
 
-        // Focus trap: when modal opens, focus first interactive element
         var modalObserver = new MutationObserver(function() {
             if (overlay.classList.contains('show')) {
                 setTimeout(function() {
@@ -859,53 +1577,39 @@
         });
         modalObserver.observe(overlay, { attributes: true, attributeFilter: ['class'] });
 
-        // Upload zone click
-        uploadZone.addEventListener('click', function() {
-            fileInput.click();
-        });
+        uploadZone.addEventListener('click', function() { fileInput.click(); });
 
-        // Drag & drop
         var uploadTextEl = uploadZone.querySelector('.upload-text');
         uploadZone.addEventListener('dragover', function(e) {
             e.preventDefault();
             this.classList.add('dragover');
             if (uploadTextEl) uploadTextEl.textContent = '松开以上传图片';
         });
-
         uploadZone.addEventListener('dragleave', function() {
             this.classList.remove('dragover');
             if (uploadTextEl) uploadTextEl.textContent = '点击或拖拽图片到此处';
         });
-
         uploadZone.addEventListener('drop', function(e) {
             e.preventDefault();
             this.classList.remove('dragover');
             if (uploadTextEl) uploadTextEl.textContent = '点击或拖拽图片到此处';
             var file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) {
-                handleImageFile(file);
-            }
+            if (file && file.type.startsWith('image/')) handleImageFile(file);
         });
 
-        // File input change
         fileInput.addEventListener('change', function() {
-            if (this.files && this.files[0]) {
-                handleImageFile(this.files[0]);
-            }
+            if (this.files && this.files[0]) handleImageFile(this.files[0]);
         });
 
-        // Re-upload
         btnReupload.addEventListener('click', function() {
             document.getElementById('imagePreview').style.display = 'none';
             document.getElementById('uploadZone').style.display = 'block';
             imageAnalysis.currentImageBase64 = null;
             btnAnalyze.disabled = true;
-            // Reset file input — required for change event to re-fire on same filename
             fileInput.value = '';
             resetResults();
         });
 
-        // Save API key
         btnSaveKey.addEventListener('click', function() {
             var key = apiKeyInput.value.trim();
             if (key) {
@@ -920,22 +1624,12 @@
             }
         });
 
-        // API key input - also save on type
-        apiKeyInput.addEventListener('input', function() {
-            checkAnalyzeReady();
-        });
+        apiKeyInput.addEventListener('input', function() { checkAnalyzeReady(); });
 
-        // Analyze button
-        btnAnalyze.addEventListener('click', function() {
-            analyzeImage();
-        });
+        btnAnalyze.addEventListener('click', function() { analyzeImage(); });
 
-        // Apply tags to selector
-        btnApplyTags.addEventListener('click', function() {
-            applyMatchedTags();
-        });
+        btnApplyTags.addEventListener('click', function() { applyMatchedTags(); });
 
-        // Copy image prompt
         btnCopyImagePrompt.addEventListener('click', function() {
             if (imageAnalysis.currentResult && imageAnalysis.currentResult.full_prompt) {
                 copyToClipboard(imageAnalysis.currentResult.full_prompt);
@@ -953,117 +1647,67 @@
 
     function handleImageFile(file) {
         if (!file) return;
-
         if (file.size > 20 * 1024 * 1024) {
             showToast('图片不能超过 20MB');
             return;
         }
-
         showToast('正在处理图片...');
 
-        // 使用 createImageBitmap 直接解码（省去 base64 中间步骤，大幅降低内存峰值）
         if (typeof createImageBitmap === 'function') {
             createImageBitmap(file).then(function(bitmap) {
-                try {
-                    processImageSource(bitmap, file);
-                } finally {
-                    if (bitmap.close) bitmap.close();
-                }
-            }).catch(function() {
-                // 降级到 FileReader 方式
-                processWithFileReader(file);
-            });
+                try { processImageSource(bitmap, file); }
+                finally { if (bitmap.close) bitmap.close(); }
+            }).catch(function() { processWithFileReader(file); });
         } else {
             processWithFileReader(file);
         }
 
-        // 通用图片处理：将任意图片源（ImageBitmap / Image）绘制到 Canvas 并压缩
         function processImageSource(source, file) {
             var canvas = document.createElement('canvas');
             var ctx = canvas.getContext('2d');
-            if (!ctx) {
-                showToast('浏览器不支持 Canvas');
-                return;
-            }
+            if (!ctx) { showToast('浏览器不支持 Canvas'); return; }
             var maxDim = 2000;
             var w = source.width, h = source.height;
-
             if (w > maxDim || h > maxDim) {
-                if (w > h) {
-                    h = Math.round(h * maxDim / w);
-                    w = maxDim;
-                } else {
-                    w = Math.round(w * maxDim / h);
-                    h = maxDim;
-                }
+                if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+                else { w = Math.round(w * maxDim / h); h = maxDim; }
             }
-
-            canvas.width = w;
-            canvas.height = h;
+            canvas.width = w; canvas.height = h;
             ctx.drawImage(source, 0, 0, w, h);
-
             var mimeType = file.type || 'image/jpeg';
-            var dataUrl;
-            if (mimeType === 'image/png') {
-                dataUrl = canvas.toDataURL('image/png', 0.9);
-            } else {
-                dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-            }
-
-            // 如果压缩后仍超过 4MB，二次压缩为低质量 JPEG
-            if (dataUrl.length > 4 * 1024 * 1024) {
-                dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-            }
-
+            var dataUrl = (mimeType === 'image/png')
+                ? canvas.toDataURL('image/png', 0.9)
+                : canvas.toDataURL('image/jpeg', 0.85);
+            if (dataUrl.length > 4 * 1024 * 1024) dataUrl = canvas.toDataURL('image/jpeg', 0.6);
             imageAnalysis.currentImageBase64 = dataUrl;
-
-            // Show preview
             var previewImg = document.getElementById('previewImg');
             var uploadZone = document.getElementById('uploadZone');
             var imagePreview = document.getElementById('imagePreview');
             if (previewImg) previewImg.src = dataUrl;
             if (uploadZone) uploadZone.style.display = 'none';
             if (imagePreview) imagePreview.style.display = 'block';
-
             checkAnalyzeReady();
         }
 
-        // 降级方案：FileReader → Image → Canvas
         function processWithFileReader(file) {
             var reader = new FileReader();
             reader.onload = function(e) {
                 var img = new Image();
                 img.onload = function() {
-                    try {
-                        processImageSource(img, file);
-                    } catch (ex) {
-                        showToast('图片处理失败: ' + (ex.message || '未知错误'));
-                        console.error('handleImageFile error:', ex);
-                    }
+                    try { processImageSource(img, file); }
+                    catch (ex) { showToast('图片处理失败: ' + (ex.message || '未知错误')); }
                 };
-                img.onerror = function() {
-                    showToast('图片加载失败，请尝试其他图片或格式');
-                    console.error('Image failed to load from data URL');
-                };
+                img.onerror = function() { showToast('图片加载失败'); };
                 img.src = e.target.result;
             };
-            reader.onerror = function() {
-                showToast('文件读取失败，请重试');
-                console.error('FileReader failed to read file');
-            };
+            reader.onerror = function() { showToast('文件读取失败'); };
             reader.readAsDataURL(file);
         }
     }
 
     function resetResults() {
-        document.getElementById('analysisResults').innerHTML = `
-            <div class="analysis-empty">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="64" height="64">
-                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-                </svg>
-                <p>上传图片并点击"开始解析"<br>AI 将自动分析建筑风格、材质、光影等维度<br>并生成可用的提示词</p>
-            </div>
-        `;
+        document.getElementById('analysisResults').innerHTML =
+            '<div class="analysis-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="64" height="64"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><p>上传图片并点击"开始解析"<br>AI 将自动分析建筑风格、材质、光影等维度<br>并生成可用的提示词</p></div>';
         document.getElementById('imageModalFooter').style.display = 'none';
         imageAnalysis.currentResult = null;
         imageAnalysis.matchedTags = [];
@@ -1074,46 +1718,23 @@
         var btnAnalyze = document.getElementById('btnAnalyze');
         var apiKey = document.getElementById('apiKeyInput').value.trim();
         var imageBase64 = imageAnalysis.currentImageBase64;
-
         if (!apiKey || !imageBase64) return;
-
-        // Save API key
         localStorage.setItem('deepseek_api_key', apiKey);
 
-        // Set loading state
         btnAnalyze.classList.add('loading');
         btnAnalyze.disabled = true;
         btnAnalyze.innerHTML = '<span class="spinner"></span><span class="btn-analyze-text"></span>';
 
-        // Show loading in results
-        document.getElementById('analysisResults').innerHTML = `
-            <div class="analysis-empty">
-                <div class="spinner" style="width:32px;height:32px;border-color:rgba(37,99,235,0.2);border-top-color:var(--accent);"></div>
-                <p>AI 正在分析图片中...<br>通常需要 5-15 秒</p>
-            </div>
-        `;
+        document.getElementById('analysisResults').innerHTML =
+            '<div class="analysis-empty"><div class="spinner" style="width:32px;height:32px;border-color:rgba(37,99,235,0.2);border-top-color:var(--accent);"></div><p>AI 正在分析图片中...<br>通常需要 5-15 秒</p></div>';
 
-        // Build the system prompt
         var systemPrompt = buildAnalysisPrompt();
-
-        // Strip data URI prefix — DeepSeek expects raw base64 only
         var rawBase64 = imageBase64;
-        if (rawBase64.indexOf('base64,') !== -1) {
-            rawBase64 = rawBase64.split('base64,')[1];
-        }
+        if (rawBase64.indexOf('base64,') !== -1) rawBase64 = rawBase64.split('base64,')[1];
 
-        // DeepSeek V4 uses a DIFFERENT message format than OpenAI:
-        // image_data is a sibling of content (not inside content array!)
-        // Model must be deepseek-v4-pro or deepseek-v4-flash
         var payload = {
             model: 'deepseek-v4-pro',
-            messages: [
-                {
-                    role: 'user',
-                    content: systemPrompt,
-                    image_data: rawBase64
-                }
-            ],
+            messages: [{ role: 'user', content: systemPrompt, image_data: rawBase64 }],
             deep_thought: true,
             temperature: 0.1,
             max_tokens: 4096,
@@ -1122,10 +1743,7 @@
 
         fetch('https://api.deepseek.com/v1/chat/completions', {
             method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + apiKey,
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         })
         .then(function(response) {
@@ -1138,23 +1756,12 @@
         })
         .then(function(data) {
             var content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-            if (!content) {
-                throw new Error('API 返回内容为空');
-            }
+            if (!content) throw new Error('API 返回内容为空');
             parseAnalysisResult(content);
         })
         .catch(function(err) {
-            document.getElementById('analysisResults').innerHTML = `
-                <div class="analysis-empty">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5" width="48" height="48">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="15" y1="9" x2="9" y2="15"/>
-                        <line x1="9" y1="9" x2="15" y2="15"/>
-                    </svg>
-                    <p style="color:#ef4444;">解析失败</p>
-                    <p style="font-size:13px;">${escapeHtml(err.message)}</p>
-                </div>
-            `;
+            document.getElementById('analysisResults').innerHTML =
+                '<div class="analysis-empty"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5" width="48" height="48"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><p style="color:#ef4444;">解析失败</p><p style="font-size:13px;">' + escapeHtml(err.message) + '</p></div>';
         })
         .finally(function() {
             btnAnalyze.classList.remove('loading');
@@ -1165,283 +1772,155 @@
     }
 
     function buildAnalysisPrompt() {
-        return 'Analyze this architectural image of a hospital / medical facility and extract AI image generation keywords.\n\n' +
-            'Identify the most relevant English keyword(s) for each dimension:\n\n' +
-            '1. Building type: outpatient clinic, emergency department, inpatient tower, operating theatre, ICU, etc.\n' +
-            '2. Space type: entrance lobby, waiting area, corridor, patient room, nursing station, operating room, etc.\n' +
-            '3. Architectural style: modern minimalist, parametric, neo-brutalist, high-tech, biomorphic, sustainable, etc.\n' +
-            '4. Facade material: glass curtain wall, aluminum panel, terracotta, concrete, stone, wood, etc.\n' +
-            '5. Color scheme: pure white, warm white, wood tones, earth tones, blue, green, grey, accent, etc.\n' +
-            '6. Lighting: golden hour, morning light, noon, blue hour, overcast, warm interior, cool clinical, etc.\n' +
-            '7. Camera angle: eye-level, low-angle, birds-eye, wide-angle, telephoto, axonometric, etc.\n' +
-            '8. Environment: dense urban, suburban, waterfront, hillside, forest, campus, etc.\n' +
-            '9. Mood: warm cozy, clinical precise, serene, vibrant, solemn, futuristic, biophilic, etc.\n' +
-            '11. Medical furniture: hospital bed, IV pole, patient monitor, nursing desk, surgical light, wheelchair, etc.\n' +
-            '12. Landscape: healing garden, living wall, water feature, tree canopy, green roof, bamboo, etc.\n' +
-            '13. Layout/massing: podium-and-block, high-rise tower, courtyard cluster, finger plan, ring layout, podium-tower, vertical zoning, linear, megastructure, satellite campus, modular expandable, courtyard-embraced, symmetrical twin-wing, staggered terrace, etc.\n' +
-            '14. Hospital-specific details: accessible ramp with handrails, color-coded wayfinding, digital kiosk, clean-dirty zoning signage, private waiting cubicle, negative-pressure isolation signage, staff-patient buffer zone, infection-control hand hygiene path, child-friendly details, anti-slip flooring, acoustic insulation, antimicrobial surface, emergency call button, accessible elevator, etc.\n' +
-            '15. Interior lighting/finishes: indirect cove lighting, linear LED strip, tunable smart lighting, perforated acoustic ceiling, antimicrobial flooring, soft-touch wall covering, illuminated wayfinding wall, focused accent spotlight, concealed integrated luminaire, circadian biodynamic lighting, perforated suspended ceiling, anti-glare diffuser, warm reading nook, floor-level night light, sculptural lighting installation, etc.\n\n' +
-            'Also generate a complete English prompt sentence for Midjourney / Stable Diffusion.\n\n' +
-            'Return a JSON object only, no markdown, no explanation:\n' +
-            '{"dimensions":{"1":["keyword"],"2":["keyword"],"3":["keyword"],"4":["keyword"],"5":["keyword"],"6":["keyword"],"7":["keyword"],"8":["keyword"],"9":["keyword"],"11":["keyword"],"12":["keyword"],"13":["keyword"],"14":["keyword"],"15":["keyword"]},"full_prompt":"complete English prompt","description":"中文描述"}';
+        return 'Analyze this architectural image of a hospital / medical facility and extract AI image generation keywords.\n\nIdentify the most relevant English keyword(s) for each dimension. Use these dimension numbers and meanings:\n\n1. Constraint type: keep geometry, keep proportions, geometry lock, etc.\n2. Building typology: general hospital, specialty hospital, medical campus, clinic, etc.\n3. Facade / skin material: glass curtain wall, double-skin facade, perforated aluminum, vertical fins, etc.\n4. Material & texture: exposed concrete, terracotta, timber, corten steel, GRC, etc.\n5. Design language / style: modern minimalist, parametric, neo-brutalist, high-tech, biomorphic, sustainable, etc.\n6. Color palette: pure white, warm white, wood tones, earth tones, blue, green, grey, accent, etc.\n7. Lighting: golden hour, morning light, noon, blue hour, overcast, warm interior, cool clinical, etc.\n8. Weather & atmosphere: clear sky, cloudy, rainy, foggy, snowy, autumn, etc.\n9. Viewpoint / camera: eye-level, low-angle, birds-eye, wide-angle, telephoto, axonometric, focal length, etc.\n10. Context / environment: dense urban, suburban, waterfront, hillside, forest, campus, etc.\n11. Mood: warm cozy, clinical precise, serene, vibrant, solemn, futuristic, biophilic, etc.\n12. Image quality: 8K, photorealistic, ultra-detailed, cinematic, architectural photography, etc.\n13. Landscape: healing garden, living wall, water feature, tree canopy, green roof, bamboo, etc.\n\nAlso generate a complete English prompt sentence for Midjourney / Stable Diffusion.\n\nReturn a JSON object only, no markdown, no explanation:\n{"dimensions":{"1":["keyword"],"2":["keyword"],...},"full_prompt":"complete English prompt","description":"中文描述"}';
     }
 
     function parseAnalysisResult(content) {
         var result;
-
-        // Try to extract JSON from the response
         try {
-            // Remove markdown code blocks if present
             var jsonStr = content;
             if (jsonStr.indexOf('```') !== -1) {
                 var match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-                if (match) {
-                    jsonStr = match[1].trim();
-                }
+                if (match) jsonStr = match[1].trim();
             }
-
-            // Try to find JSON object
             var jsonStart = jsonStr.indexOf('{');
             var jsonEnd = jsonStr.lastIndexOf('}');
-            if (jsonStart !== -1 && jsonEnd !== -1) {
-                jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
-            }
-
+            if (jsonStart !== -1 && jsonEnd !== -1) jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
             result = JSON.parse(jsonStr);
         } catch (e) {
-            // If JSON parsing fails, show raw text
-            result = {
-                full_prompt: content,
-                description: '解析结果格式异常，已显示原始文本',
-                dimensions: {}
-            };
+            result = { full_prompt: content, description: '解析结果格式异常，已显示原始文本', dimensions: {} };
         }
 
         imageAnalysis.currentResult = result;
-
-        // Match keywords to existing vocabulary
         imageAnalysis.matchedTags = matchKeywordsToVocabulary(result.dimensions || {});
-
-        // Save to history
         saveToHistory();
-
-        // Render results
         renderAnalysisResults(result);
     }
 
-    // ===== Match AI keywords to existing vocabulary =====
+    // ===== Match AI keywords to vocabulary =====
     function matchKeywordsToVocabulary(dimensions) {
         var matches = [];
 
-        Object.keys(dimensions).forEach(function(dimId) {
-            var dimIdNum = parseInt(dimId);
-            var dim = state.data.find(function(d) { return d.id === dimIdNum; });
-            if (!dim) return;
-
-            var keywords = dimensions[dimId];
+        // 两种模式数据结构已统一（模块 → 类别 → 词条），直接跨全部模块/类别按关键词匹配
+        Object.keys(dimensions).forEach(function(dimIdStr) {
+            var keywords = dimensions[dimIdStr];
             if (!Array.isArray(keywords)) keywords = [keywords];
 
-            keywords.forEach(function(keyword) {
-                var kwLower = keyword.toLowerCase();
-
-                dim.items.forEach(function(item, idx) {
-                    var enLower = (item.en || '').toLowerCase();
-                    var cnLower = (item.cn || '').toLowerCase();
-                    var labelLower = (item.label || '').toLowerCase();
-
-                    // Check for matches
-                    var isMatch = false;
-                    var matchScore = 0;
-
-                    // Exact English match
-                    if (enLower === kwLower) {
-                        isMatch = true;
-                        matchScore = 100;
-                    }
-                    // English contains keyword
-                    else if (enLower.indexOf(kwLower) !== -1 || kwLower.indexOf(enLower) !== -1) {
-                        isMatch = true;
-                        matchScore = 80;
-                    }
-                    // Keyword matches a significant word in English (split by space, slash, comma)
-                    else {
-                        var enWords = enLower.split(/[\s\/,]+/).filter(function(w) { return w.length > 3; });
-                        var kwWords = kwLower.split(/[\s\/,]+/).filter(function(w) { return w.length > 3; });
-                        for (var i = 0; i < kwWords.length; i++) {
-                            for (var j = 0; j < enWords.length; j++) {
-                                if (enWords[j] === kwWords[i] || enWords[j].indexOf(kwWords[i]) !== -1 || kwWords[i].indexOf(enWords[j]) !== -1) {
-                                    isMatch = true;
-                                    matchScore = 60;
-                                    break;
-                                }
-                            }
-                            if (isMatch) break;
-                        }
-                    }
-
-                    if (isMatch) {
-                        matches.push({
-                            dimId: dimIdNum,
-                            itemIdx: idx,
-                            keyword: keyword,
-                            label: item.label,
-                            en: item.en,
-                            score: matchScore
-                        });
-                    }
+            state.data.forEach(function(mod) {
+                mod.categories.forEach(function(cat, catIdx) {
+                    keywords.forEach(function(keyword) {
+                        findMatchesWithMeta(cat.items, mod.id, catIdx, cat.role, mod.title, cat.title, keyword, matches);
+                    });
                 });
             });
         });
 
-        // Deduplicate: for each dimension+item, keep only the highest score match
+        // Deduplicate by moduleId::catIdx::itemIdx
         var deduped = {};
         matches.forEach(function(m) {
-            var key = m.dimId + '-' + m.itemIdx;
-            if (!deduped[key] || deduped[key].score < m.score) {
-                deduped[key] = m;
-            }
+            var key = m.moduleId + '::' + m.catIdx + '::' + m.itemIdx;
+            if (!deduped[key] || deduped[key].score < m.score) deduped[key] = m;
         });
 
         return Object.values(deduped);
+    }
+
+    function findMatchesWithMeta(items, moduleId, catIdx, role, moduleTitle, catTitle, keyword, matches) {
+        var kwLower = keyword.toLowerCase();
+        items.forEach(function(item, idx) {
+            var matchScore = calcMatchScore(item, kwLower);
+            if (matchScore > 0) {
+                matches.push({
+                    moduleId: moduleId, catIdx: catIdx, itemIdx: idx,
+                    keyword: keyword, label: item.label, en: item.en,
+                    score: matchScore, role: role,
+                    moduleTitle: moduleTitle, catTitle: catTitle
+                });
+            }
+        });
+    }
+
+    function calcMatchScore(item, kwLower) {
+        var enLower = (item.en || '').toLowerCase();
+        var labelLower = (item.label || '').toLowerCase();
+
+        if (enLower === kwLower || labelLower === kwLower) return 100;
+        if (enLower.indexOf(kwLower) !== -1 || kwLower.indexOf(enLower) !== -1) return 80;
+
+        var enWords = enLower.split(/[\s\/,]+/).filter(function(w) { return w.length > 3; });
+        var kwWords = kwLower.split(/[\s\/,]+/).filter(function(w) { return w.length > 3; });
+        for (var i = 0; i < kwWords.length; i++) {
+            for (var j = 0; j < enWords.length; j++) {
+                if (enWords[j] === kwWords[i] || enWords[j].indexOf(kwWords[i]) !== -1 || kwWords[i].indexOf(enWords[j]) !== -1) {
+                    return 60;
+                }
+            }
+        }
+        return 0;
     }
 
     // ===== Render Analysis Results =====
     function renderAnalysisResults(result) {
         var html = '<div class="analysis-content">';
 
-        // Description
         if (result.description) {
-            html += `
-                <div class="result-card">
-                    <div class="result-card-label">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                            <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/>
-                            <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
-                        </svg>
-                        图片描述
-                    </div>
-                    <div class="result-description">${escapeHtml(result.description)}</div>
-                </div>
-            `;
+            html += '<div class="result-card"><div class="result-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>图片描述</div><div class="result-description">' + escapeHtml(result.description) + '</div></div>';
         }
 
-        // Full prompt
         if (result.full_prompt) {
-            html += `
-                <div class="result-card">
-                    <div class="result-card-label">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-                            <polyline points="14 2 14 8 20 8"/>
-                        </svg>
-                        完整提示词
-                    </div>
-                    <div class="result-prompt-text">${escapeHtml(result.full_prompt)}</div>
-                </div>
-            `;
+            html += '<div class="result-card"><div class="result-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>完整提示词</div><div class="result-prompt-text">' + escapeHtml(result.full_prompt) + '</div></div>';
         }
 
-        // Dimension breakdown
-        if (result.dimensions && Object.keys(result.dimensions).length > 0) {
+        if (result.dimensions && Object.keys(result.dimensions).length > 0 && state.mode === 'rendering') {
             html += '<div class="result-card"><div class="result-card-label">维度分析</div><div class="dimension-breakdown">';
-
-            Object.keys(result.dimensions).forEach(function(dimId) {
-                var dimIdNum = parseInt(dimId);
-                var dim = state.data.find(function(d) { return d.id === dimIdNum; });
+            Object.keys(result.dimensions).forEach(function(dimIdStr) {
+                var dim = state.data.find(function(d) { return d.id === dimIdStr; });
                 if (!dim) return;
-
-                var keywords = result.dimensions[dimId];
+                var keywords = result.dimensions[dimIdStr];
                 if (!Array.isArray(keywords)) keywords = [keywords];
-
-                // Check if any keyword has a match
-                var hasMatch = imageAnalysis.matchedTags.some(function(m) { return m.dimId === dimIdNum; });
-
-                html += `
-                    <div class="breakdown-item ${hasMatch ? 'has-match' : ''}">
-                        <span class="breakdown-dim-num">${dimIdNum}</span>
-                        <div class="breakdown-content">
-                            <div class="breakdown-dim-title">${dim.title}</div>
-                            <div class="breakdown-keywords">
-                `;
-
+                var hasMatch = imageAnalysis.matchedTags.some(function(m) { return m.moduleId === dimIdStr; });
+                html += '<div class="breakdown-item ' + (hasMatch ? 'has-match' : '') + '"><span class="breakdown-dim-num">' + dimIdStr + '</span><div class="breakdown-content"><div class="breakdown-dim-title">' + dim.title + '</div><div class="breakdown-keywords">';
                 keywords.forEach(function(kw) {
-                    // Check if this keyword is matched
-                    var isMatched = imageAnalysis.matchedTags.some(function(m) {
-                        return m.dimId === dimIdNum && m.keyword.toLowerCase() === kw.toLowerCase();
-                    });
-                    html += `<span class="breakdown-keyword ${isMatched ? 'matched' : ''}" title="${isMatched ? '已匹配词库' : 'AI生成关键词'}">${escapeHtml(kw)}</span>`;
+                    var isMatched = imageAnalysis.matchedTags.some(function(m) { return m.moduleId === dimIdStr && m.keyword.toLowerCase() === kw.toLowerCase(); });
+                    html += '<span class="breakdown-keyword ' + (isMatched ? 'matched' : '') + '">' + escapeHtml(kw) + '</span>';
                 });
-
                 html += '</div></div></div>';
             });
-
             html += '</div></div>';
         }
 
-        // Matched tags summary
         if (imageAnalysis.matchedTags.length > 0) {
-            html += `
-                <div class="result-card" style="background:var(--accent-bg);border-color:var(--accent-light);">
-                    <div class="result-card-label" style="color:var(--accent);">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                            <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                        已匹配词库 (${imageAnalysis.matchedTags.length} 项)
-                    </div>
-                    <div class="breakdown-keywords">
-            `;
-
+            html += '<div class="result-card" style="background:var(--accent-bg);border-color:var(--accent-light);"><div class="result-card-label" style="color:var(--accent);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>已匹配词库 (' + imageAnalysis.matchedTags.length + ' 项)</div><div class="breakdown-keywords">';
             imageAnalysis.matchedTags.forEach(function(m) {
-                html += `<span class="breakdown-keyword matched" style="background:var(--accent);color:white;border-color:var(--accent);">D${m.dimId} ${escapeHtml(m.label)}</span>`;
+                var badge = m.moduleId;
+                html += '<span class="breakdown-keyword matched" style="background:var(--accent);color:white;border-color:var(--accent);">' + badge + ' ' + escapeHtml(m.label) + '</span>';
             });
-
             html += '</div></div>';
         }
 
         html += '</div>';
-
         document.getElementById('analysisResults').innerHTML = html;
-
-        // Show footer
         document.getElementById('imageModalFooter').style.display = 'flex';
     }
 
-    // ===== Apply matched tags to the tag selector =====
+    // ===== Apply matched tags =====
     function applyMatchedTags() {
-        if (imageAnalysis.matchedTags.length === 0) {
-            showToast('没有可应用的匹配项');
-            return;
-        }
-
+        if (imageAnalysis.matchedTags.length === 0) { showToast('没有可应用的匹配项'); return; }
         var appliedCount = 0;
 
         imageAnalysis.matchedTags.forEach(function(match) {
-            var key = match.dimId + '-' + match.itemIdx;
-
-            // For dim 10, clear previous selections first
-            if (match.dimId === 10) {
-                state.selected.forEach(function(val, k) {
-                    if (k.startsWith('10-')) {
-                        state.selected.delete(k);
-                        var existingTag = document.querySelector('.tag[data-key="' + k + '"]');
-                        if (existingTag) existingTag.classList.remove('selected');
-                    }
-                });
-            }
+            var key = match.moduleId + '::' + match.catIdx + '::' + match.itemIdx;
 
             if (!state.selected.has(key)) {
-                var dim = state.data.find(function(d) { return d.id === match.dimId; });
-                if (dim && dim.items[match.itemIdx]) {
+                var mod = findModule(match.moduleId);
+                if (mod && mod.categories[match.catIdx] && mod.categories[match.catIdx].items[match.itemIdx]) {
                     state.selected.set(key, {
-                        dimId: match.dimId,
-                        itemIdx: match.itemIdx,
-                        item: dim.items[match.itemIdx],
-                        dimTitle: dim.title
+                        moduleId: match.moduleId, catIdx: match.catIdx, itemIdx: match.itemIdx,
+                        item: mod.categories[match.catIdx].items[match.itemIdx],
+                        role: match.role, moduleTitle: match.moduleTitle, catTitle: match.catTitle
                     });
-
                     var tagEl = document.querySelector('.tag[data-key="' + key + '"]');
                     if (tagEl) tagEl.classList.add('selected');
-
                     appliedCount++;
                 }
             }
@@ -1450,26 +1929,18 @@
         updateSelectedTags();
         updateDimensionCounts();
         updatePrompt();
-
         showToast('已应用 ' + appliedCount + ' 个匹配项到提示词选择器');
-
-        // Close modal
         document.getElementById('imageModalOverlay').classList.remove('show');
     }
 
     // ===== History Management =====
     function saveToHistory() {
         if (!imageAnalysis.currentResult || !imageAnalysis.currentImageBase64) return;
-
-        // Generate thumbnail async, then save
         generateThumbnail(imageAnalysis.currentImageBase64, 200, 150).then(function(thumbnail) {
             var history = loadHistory();
-
-            // Prepare matched tags (simplified for storage)
             var savedMatchedTags = imageAnalysis.matchedTags.map(function(m) {
-                return { dimId: m.dimId, itemIdx: m.itemIdx, label: m.label, keyword: m.keyword, en: m.en, score: m.score };
+                return { dimId: m.dimId, moduleId: m.moduleId, catIdx: m.catIdx, itemIdx: m.itemIdx, label: m.label, keyword: m.keyword, en: m.en, score: m.score };
             });
-
             var entry = {
                 timestamp: new Date().toISOString(),
                 thumbnail: thumbnail,
@@ -1480,40 +1951,20 @@
                 },
                 matchedTags: savedMatchedTags
             };
-
-            // Add to front of array
             history.unshift(entry);
-
-            // Limit to max items
-            if (history.length > HISTORY_MAX_ITEMS) {
-                history = history.slice(0, HISTORY_MAX_ITEMS);
-            }
-
-            // Save
-            try {
-                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
-                updateHistoryBadge();
-            } catch (e) {
-                // localStorage full — shrink by half
+            if (history.length > HISTORY_MAX_ITEMS) history = history.slice(0, HISTORY_MAX_ITEMS);
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history)); updateHistoryBadge(); }
+            catch (e) {
                 history = history.slice(0, Math.floor(HISTORY_MAX_ITEMS / 2));
-                try {
-                    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
-                    updateHistoryBadge();
-                } catch (e2) {
-                    console.error('Failed to save history:', e2);
-                }
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history)); updateHistoryBadge(); }
+                catch (e2) { console.error('Failed to save history:', e2); }
             }
         });
     }
 
     function loadHistory() {
-        try {
-            var raw = localStorage.getItem(HISTORY_STORAGE_KEY);
-            if (!raw) return [];
-            return JSON.parse(raw);
-        } catch (e) {
-            return [];
-        }
+        try { var raw = localStorage.getItem(HISTORY_STORAGE_KEY); return raw ? JSON.parse(raw) : []; }
+        catch (e) { return []; }
     }
 
     function generateThumbnail(base64Data, maxW, maxH) {
@@ -1529,9 +1980,7 @@
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 resolve(canvas.toDataURL('image/jpeg', 0.6));
             };
-            img.onerror = function() {
-                resolve('');
-            };
+            img.onerror = function() { resolve(''); };
             img.src = base64Data;
         });
     }
@@ -1539,81 +1988,36 @@
     function renderHistory() {
         var panel = document.getElementById('historyPanel');
         var history = loadHistory();
-
         if (history.length === 0) {
-            panel.innerHTML = `
-                <div class="analysis-empty">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
-                        <circle cx="12" cy="12" r="10"/>
-                        <polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    <p>暂无历史记录<br>解析图片后将自动保存到此处</p>
-                </div>
-            `;
+            panel.innerHTML = '<div class="analysis-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><p>暂无历史记录<br>解析图片后将自动保存到此处</p></div>';
             return;
         }
-
         var html = '';
         history.forEach(function(entry, index) {
             var date = new Date(entry.timestamp);
             var timeStr = formatDate(date);
             var dimCount = entry.result.dimensions ? Object.keys(entry.result.dimensions).length : 0;
             var matchedCount = entry.matchedTags ? entry.matchedTags.length : 0;
-
-            // First few matched tags for preview
             var tagHtml = '';
             if (entry.matchedTags && entry.matchedTags.length > 0) {
                 var previewTags = entry.matchedTags.slice(0, 6);
-                previewTags.forEach(function(tag) {
-                    tagHtml += '<span class="history-item-tag">' + escapeHtml(tag.label) + '</span>';
-                });
-                if (entry.matchedTags.length > 6) {
-                    tagHtml += '<span class="history-item-tag">+' + (entry.matchedTags.length - 6) + '</span>';
-                }
+                previewTags.forEach(function(tag) { tagHtml += '<span class="history-item-tag">' + escapeHtml(tag.label) + '</span>'; });
+                if (entry.matchedTags.length > 6) tagHtml += '<span class="history-item-tag">+' + (entry.matchedTags.length - 6) + '</span>';
             }
-
-            html += `
-                <div class="history-item" data-index="${index}" onclick="void(0)">
-                    <div class="history-item-thumb">
-                        <img src="${entry.thumbnail || ''}" alt="" onerror="this.style.display='none'">
-                    </div>
-                    <div class="history-item-info">
-                        <div class="history-item-meta">
-                            <span class="history-item-time">${timeStr}</span>
-                            <span class="history-item-dims">${dimCount} 个维度</span>
-                            ${matchedCount > 0 ? '<span class="history-item-dims">' + matchedCount + ' 项匹配</span>' : ''}
-                        </div>
-                        <div class="history-item-desc">${escapeHtml(entry.result.description || '无描述')}</div>
-                        <div class="history-item-tags">${tagHtml}</div>
-                    </div>
-                    <button class="history-item-delete" title="删除此记录">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                            <line x1="18" y1="6" x2="6" y2="18"/>
-                            <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
-                    </button>
-                </div>
-            `;
+            html += '<div class="history-item" data-index="' + index + '"><div class="history-item-thumb"><img src="' + (entry.thumbnail || '') + '" alt="" onerror="this.style.display=\'none\'"></div><div class="history-item-info"><div class="history-item-meta"><span class="history-item-time">' + timeStr + '</span><span class="history-item-dims">' + dimCount + ' 个维度</span>' + (matchedCount > 0 ? '<span class="history-item-dims">' + matchedCount + ' 项匹配</span>' : '') + '</div><div class="history-item-desc">' + escapeHtml(entry.result.description || '无描述') + '</div><div class="history-item-tags">' + tagHtml + '</div></div><button class="history-item-delete" title="删除此记录"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
         });
-
         panel.innerHTML = html;
 
-        // Bind click events
         panel.querySelectorAll('.history-item').forEach(function(item) {
             item.addEventListener('click', function(e) {
-                // Don't trigger if clicking delete button
                 if (e.target.closest('.history-item-delete')) return;
-
-                var index = parseInt(this.dataset.index);
-                viewHistoryItem(index);
+                viewHistoryItem(parseInt(this.dataset.index));
             });
         });
-
         panel.querySelectorAll('.history-item-delete').forEach(function(btn) {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
-                var index = parseInt(this.closest('.history-item').dataset.index);
-                deleteHistoryItem(index);
+                deleteHistoryItem(parseInt(this.closest('.history-item').dataset.index));
             });
         });
     }
@@ -1621,29 +2025,19 @@
     function viewHistoryItem(index) {
         var history = loadHistory();
         if (index < 0 || index >= history.length) return;
-
         var entry = history[index];
         imageAnalysis.currentResult = entry.result;
         imageAnalysis.matchedTags = entry.matchedTags || [];
-
-        // Restore image preview (use thumbnail for display only)
         if (entry.thumbnail) {
             document.getElementById('previewImg').src = entry.thumbnail;
             document.getElementById('uploadZone').style.display = 'none';
             document.getElementById('imagePreview').style.display = 'block';
         }
-
-        // Render results in current panel
         renderAnalysisResults(entry.result);
-
-        // Disable analyze button explicitly — thumbnail is too small to use
         imageAnalysis.currentImageBase64 = null;
         var btnAnalyze = document.getElementById('btnAnalyze');
         if (btnAnalyze) btnAnalyze.disabled = true;
-        // Reset file input so re-upload can always fire change event
         document.getElementById('imageFileInput').value = '';
-
-        // Switch to current tab
         document.querySelectorAll('.image-modal-tab').forEach(function(t) { t.classList.remove('active'); });
         document.querySelectorAll('.image-modal-tab-panel').forEach(function(p) { p.classList.remove('active'); });
         document.getElementById('tabCurrent').classList.add('active');
@@ -1653,12 +2047,10 @@
     function deleteHistoryItem(index) {
         var history = loadHistory();
         if (index < 0 || index >= history.length) return;
-
         history.splice(index, 1);
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
         updateHistoryBadge();
         renderHistory();
-
         showToast('已删除历史记录');
     }
 
@@ -1666,13 +2058,8 @@
         var badge = document.getElementById('historyCountBadge');
         var history = loadHistory();
         var count = history.length;
-
-        if (count > 0) {
-            badge.textContent = count;
-            badge.style.display = 'inline-flex';
-        } else {
-            badge.style.display = 'none';
-        }
+        if (count > 0) { badge.textContent = count; badge.style.display = 'inline-flex'; }
+        else { badge.style.display = 'none'; }
     }
 
     function formatDate(date) {
@@ -1681,12 +2068,10 @@
         var minutes = Math.floor(diff / 60000);
         var hours = Math.floor(diff / 3600000);
         var days = Math.floor(diff / 86400000);
-
         if (minutes < 1) return '刚刚';
         if (minutes < 60) return minutes + ' 分钟前';
         if (hours < 24) return hours + ' 小时前';
         if (days < 7) return days + ' 天前';
-
         var y = date.getFullYear();
         var m = String(date.getMonth() + 1).padStart(2, '0');
         var d = String(date.getDate()).padStart(2, '0');
@@ -1695,7 +2080,6 @@
         return y + '-' + m + '-' + d + ' ' + hh + ':' + mm;
     }
 
-    // Initialize history badge on load
     updateHistoryBadge();
 
     // ===== Utility: escape HTML =====
